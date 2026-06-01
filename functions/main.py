@@ -62,7 +62,10 @@ def _clear_data_cells(ws, mapping):
     block = mapping['room_block']
     value_fields = block['value_fields']
 
-    ws[mapping['property_name_cell']] = None
+    # property_name_cell を持たない将来フォーマットにも備え、定義時のみ消す。
+    prop_cell = mapping.get('property_name_cell')
+    if prop_cell:
+        ws[prop_cell] = None
     for start_row in mapping['block_start_rows']:
         ws[f"{block['floor_col']}{start_row}"] = None
         ws[f"{block['room_name_col']}{start_row}"] = None
@@ -87,7 +90,10 @@ def _write_room(ws, mapping, start_row, room):
     ws[f"{block['room_name_col']}{start_row}"] = _to_cell_value(room.get('room_name'))
 
     value_fields = block['value_fields']
-    measurements = room.get('measurements') or {}
+    # measurements が辞書以外（リストや文字列など）でも落ちないようにする。
+    measurements = room.get('measurements')
+    if not isinstance(measurements, dict):
+        measurements = {}
     for m in block['measurements']:
         data = measurements.get(m['key'])
         if not isinstance(data, dict):
@@ -131,7 +137,13 @@ def generate_excel(request):
             return jsonify({"error": "No template provided"}), 400, headers
 
         mapping = _load_mapping()
-        rooms = request_json.get('rooms') or []
+        # rooms は未指定なら空リスト。リスト以外が来たら 400 で弾く（len() で
+        # TypeError → 500 になるのを防ぐ）。
+        rooms = request_json.get('rooms')
+        if rooms is None:
+            rooms = []
+        elif not isinstance(rooms, list):
+            return jsonify({"error": "rooms must be a list"}), 400, headers
         block_start_rows = mapping['block_start_rows']
         if len(rooms) > len(block_start_rows):
             return jsonify({
@@ -147,10 +159,11 @@ def generate_excel(request):
         # 雛形の記入例・前回値が残らないよう、記入欄を一度クリアする。
         _clear_data_cells(ws, mapping)
 
-        # 物件名（共通項目）
-        if 'property_name' in request_json:
-            ws[mapping['property_name_cell']] = _to_cell_value(
-                request_json.get('property_name'))
+        # 物件名（共通項目）。property_name_cell を持たない将来フォーマットでも
+        # mapping から該当キーを省くだけで対応できるよう、定義時のみ書き込む。
+        prop_cell = mapping.get('property_name_cell')
+        if prop_cell and 'property_name' in request_json:
+            ws[prop_cell] = _to_cell_value(request_json.get('property_name'))
 
         # 各部屋のデータを、対応するブロックへ順に書き込む。
         for i, room in enumerate(rooms):

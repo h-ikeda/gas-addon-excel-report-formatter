@@ -168,6 +168,24 @@ def test_non_dict_room_entries_are_skipped(client):
     assert ws[f"{BLOCK['room_name_col']}{STARTS[1]}"].value == "寝室"
 
 
+def test_rooms_not_a_list_returns_400(client):
+    # A non-list ``rooms`` would crash len(); it must be rejected with a 400.
+    resp = client.post("/", json=_payload(rooms=5))
+
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "rooms must be a list"}
+
+
+def test_non_dict_measurements_are_ignored(client):
+    # ``measurements`` of the wrong type must not crash (regression guard).
+    resp = client.post("/", json=_payload(rooms=[
+        {"floor": "1", "room_name": "和室", "measurements": ["bogus"]},
+    ]))
+    assert resp.status_code == 200
+    ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
+    assert ws[f"{BLOCK['room_name_col']}{STARTS[0]}"].value == "和室"
+
+
 def test_multiple_rooms_map_to_successive_blocks(client):
     rooms = [
         {"floor": "1", "room_name": "玄関", "measurements": {}},
