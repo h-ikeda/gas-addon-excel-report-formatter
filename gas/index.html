@@ -106,6 +106,10 @@
         .setSelectFolderEnabled(false);
 
       const picker = new google.picker.PickerBuilder()
+        // HtmlService の iframe は googleusercontent.com オリジンで動くため、
+        // 実際のホストオリジンを Picker に渡さないと postMessage のオリジン
+        // 検証に失敗する（"Incorrect origin value" エラー）。
+        .setOrigin(google.script.host.origin)
         .setOAuthToken(config.token)
         .setDeveloperKey(config.apiKey)
         .setAppId(config.appId)
