@@ -5,12 +5,18 @@ function doGet() {
 }
 
 function createReport(formData) {
-  // TODO: デプロイした gen2 Cloud Functions の URL に置き換えてください。
-  // 取得方法:
-  //   gcloud functions describe generate_excel --gen2 \
-  //     --region asia-northeast1 --project dev-addons \
-  //     --format='value(serviceConfig.uri)'
-  const CLOUD_FUNCTION_URL = 'https://REGION-PROJECT_ID.cloudfunctions.net/generate_excel';
+  // Cloud Function の URL はスクリプトプロパティ CLOUD_FUNCTION_URL から取得する。
+  // 設定方法: Apps Script エディタ → プロジェクトの設定 → スクリプト プロパティ
+  //   プロパティ名: CLOUD_FUNCTION_URL
+  //   値: gen2 関数の URL（下記コマンドで取得）
+  //     gcloud functions describe generate_excel --gen2 \
+  //       --region asia-northeast1 --project dev-addons \
+  //       --format='value(serviceConfig.uri)'
+  const CLOUD_FUNCTION_URL =
+    PropertiesService.getScriptProperties().getProperty('CLOUD_FUNCTION_URL');
+  if (!CLOUD_FUNCTION_URL) {
+    throw new Error('スクリプトプロパティ CLOUD_FUNCTION_URL が設定されていません。');
+  }
 
   const payload = {
     floor: formData.floor,
