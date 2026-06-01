@@ -4,6 +4,10 @@ These exercise the function through the Functions Framework's Flask test
 client, which provides the request/response and application context that
 ``request.get_json`` and ``flask.jsonify`` rely on. The source under
 ``main.py`` is treated as a black box and is not modified.
+
+The Excel template is no longer bundled with the function: callers (the GAS
+frontend) read it from Google Drive and pass it as a Base64 ``template``
+field in the request body. The helpers below build such a template in memory.
 """
 
 import base64
@@ -12,7 +16,7 @@ import os
 
 import pytest
 from functions_framework import create_app
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 
 SOURCE = os.path.join(os.path.dirname(__file__), "main.py")
@@ -22,6 +26,22 @@ SOURCE = os.path.join(os.path.dirname(__file__), "main.py")
 def client():
     app = create_app(target="generate_excel", source=SOURCE)
     return app.test_client()
+
+
+def _make_template_b64(sheet_name="傾斜測定"):
+    """Build a minimal template workbook and return it Base64-encoded."""
+    wb = Workbook()
+    wb.active.title = sheet_name
+    buf = io.BytesIO()
+    wb.save(buf)
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def _payload(**fields):
+    """Build a request body, defaulting to a valid Base64 template."""
+    body = {"template": _make_template_b64()}
+    body.update(fields)
+    return body
 
 
 def _decode_workbook(file_data):
@@ -46,14 +66,9 @@ def test_options_preflight_returns_cors_headers(client):
 # --- Successful generation --------------------------------------------------
 
 def test_post_valid_data_returns_success_payload(client):
-    payload = {
-        "floor": "2",
-        "room_name": "LDK",
-        "x_tilt": "3",
-        "y_tilt": "5",
-    }
-
-    resp = client.post("/", json=payload)
+    resp = client.post("/", json=_payload(
+        floor="2", room_name="LDK", x_tilt="3", y_tilt="5",
+    ))
 
     assert resp.status_code == 200
     assert resp.headers["Access-Control-Allow-Origin"] == "*"
@@ -65,14 +80,9 @@ def test_post_valid_data_returns_success_payload(client):
 
 
 def test_post_valid_data_writes_values_into_template(client):
-    payload = {
-        "floor": "2",
-        "room_name": "LDK",
-        "x_tilt": "3",
-        "y_tilt": "5",
-    }
-
-    resp = client.post("/", json=payload)
+    resp = client.post("/", json=_payload(
+        floor="2", room_name="LDK", x_tilt="3", y_tilt="5",
+    ))
     wb = _decode_workbook(resp.get_json()["fileData"])
     ws = wb["傾斜測定"]
 
@@ -83,7 +93,7 @@ def test_post_valid_data_writes_values_into_template(client):
 
 
 def test_returned_file_is_a_valid_xlsx(client):
-    resp = client.post("/", json={"floor": "1", "room_name": "和室"})
+    resp = client.post("/", json=_payload(floor="1", room_name="和室"))
     raw = base64.b64decode(resp.get_json()["fileData"])
 
     # XLSX files are zip archives and start with the PK signature.
@@ -95,7 +105,7 @@ def test_returned_file_is_a_valid_xlsx(client):
 def test_missing_fields_default_to_empty(client):
     # Only ``floor`` is provided; the rest fall back to "" in the source, which
     # openpyxl stores as an empty (None) cell after the save round-trip.
-    resp = client.post("/", json={"floor": "3"})
+    resp = client.post("/", json=_payload(floor="3"))
     ws = _decode_workbook(resp.get_json()["fileData"])["傾斜測定"]
 
     assert ws["A15"].value == "3"
@@ -130,15 +140,34 @@ def test_non_json_body_returns_400(client):
     assert resp.get_json() == {"error": "No data provided"}
 
 
+def test_post_without_template_returns_400(client):
+    # Data is present but no template was supplied by the caller.
+    resp = client.post("/", json={"floor": "1", "room_name": "LDK"})
+
+    assert resp.status_code == 400
+    assert resp.headers["Access-Control-Allow-Origin"] == "*"
+    assert resp.get_json() == {"error": "No template provided"}
+
+
 # --- Error handling ---------------------------------------------------------
 
-def test_internal_error_returns_500_with_message(client, monkeypatch, tmp_path):
-    # Run from a directory without ``template.xlsx`` so load_workbook raises,
-    # exercising the ``except`` branch that returns a 500 with the error text.
-    monkeypatch.chdir(tmp_path)
+def test_invalid_template_bytes_returns_500_with_message(client):
+    # A non-xlsx Base64 blob makes load_workbook raise, exercising the
+    # ``except`` branch that returns a 500 with the error text.
+    bogus = base64.b64encode(b"not a real workbook").decode("utf-8")
 
-    resp = client.post("/", json={"floor": "1", "room_name": "LDK"})
+    resp = client.post("/", json={"floor": "1", "room_name": "LDK", "template": bogus})
 
     assert resp.status_code == 500
     assert resp.headers["Access-Control-Allow-Origin"] == "*"
-    assert "template.xlsx" in resp.get_json()["error"]
+    assert resp.get_json()["error"]
+
+
+def test_template_without_expected_sheet_returns_500(client):
+    # A valid workbook that lacks the 傾斜測定 sheet raises a KeyError.
+    resp = client.post("/", json=_payload(floor="1") | {
+        "template": _make_template_b64(sheet_name="別のシート"),
+    })
+
+    assert resp.status_code == 500
+    assert "傾斜測定" in resp.get_json()["error"]
