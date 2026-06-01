@@ -5,6 +5,23 @@ import json
 from openpyxl import load_workbook
 from flask import jsonify
 
+
+def _set_cell(ws, coord, value):
+    """Write ``value`` to ``coord``, handling merged cells.
+
+    In openpyxl, only the top-left (anchor) cell of a merged range is writable;
+    the other cells in the range are read-only ``MergedCell`` objects. Writing
+    to them raises "'MergedCell' object attribute 'value' is read-only".
+    When the target sits inside a merged range, write to that range's anchor
+    instead — that is the cell whose value is actually displayed.
+    """
+    for rng in ws.merged_cells.ranges:
+        if coord in rng:
+            ws.cell(row=rng.min_row, column=rng.min_col).value = value
+            return
+    ws[coord] = value
+
+
 @functions_framework.http
 def generate_excel(request):
     if request.method == 'OPTIONS':
@@ -35,10 +52,11 @@ def generate_excel(request):
         ws = wb['傾斜測定']
 
         # データの書き込み (セル位置は調整してください)
-        ws['A15'] = request_json.get('floor', '')
-        ws['C15'] = request_json.get('room_name', '')
-        ws['L15'] = request_json.get('x_tilt', '')
-        ws['L17'] = request_json.get('y_tilt', '')
+        # 結合セルでも安全に書き込めるよう _set_cell を経由する。
+        _set_cell(ws, 'A15', request_json.get('floor', ''))
+        _set_cell(ws, 'C15', request_json.get('room_name', ''))
+        _set_cell(ws, 'L15', request_json.get('x_tilt', ''))
+        _set_cell(ws, 'L17', request_json.get('y_tilt', ''))
 
         output = io.BytesIO()
         wb.save(output)

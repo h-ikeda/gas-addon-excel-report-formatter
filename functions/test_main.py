@@ -92,6 +92,28 @@ def test_post_valid_data_writes_values_into_template(client):
     assert ws["L17"].value == "5"
 
 
+def test_writes_to_anchor_when_target_is_inside_a_merged_range(client):
+    # Build a template where the write targets are NOT the top-left of their
+    # merged ranges (A14:A15 makes A15 a read-only MergedCell, L14:L15 makes
+    # L15 one). The function must write to the range anchors (A14 / L14) rather
+    # than raise "'MergedCell' object attribute 'value' is read-only".
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "傾斜測定"
+    ws.merge_cells("A14:A15")
+    ws.merge_cells("L14:L15")
+    buf = io.BytesIO()
+    wb.save(buf)
+    template = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    resp = client.post("/", json={"floor": "7", "x_tilt": "9", "template": template})
+
+    assert resp.status_code == 200
+    out = _decode_workbook(resp.get_json()["fileData"])["傾斜測定"]
+    assert out["A14"].value == "7"   # anchor of A14:A15
+    assert out["L14"].value == "9"   # anchor of L14:L15
+
+
 def test_returned_file_is_a_valid_xlsx(client):
     resp = client.post("/", json=_payload(floor="1", room_name="和室"))
     raw = base64.b64decode(resp.get_json()["fileData"])
