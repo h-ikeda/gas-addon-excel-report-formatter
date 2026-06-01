@@ -18,11 +18,13 @@ function createReport(formData) {
     throw new Error('スクリプトプロパティ CLOUD_FUNCTION_URL が設定されていません。');
   }
 
+  // フォームの構造（物件名・複数部屋・各計測点）は index.html 側で組み立て、
+  // ここではそのまま Cloud Function へ転送する。セルへの書き込み位置は
+  // バックエンドの mapping.json が一元管理しているため、フォーマットの
+  // 微修正時にこの関数を変更する必要はない。
   const payload = {
-    floor: formData.floor,
-    room_name: formData.room_name,
-    x_tilt: formData.x_tilt,
-    y_tilt: formData.y_tilt,
+    property_name: formData.property_name,
+    rooms: formData.rooms || [],
     // Excel 雛形は Google Drive 上の社外秘フォーマットを実行ユーザー権限で
     // 読み取り、Base64 で Cloud Function に渡す。
     template: fetchTemplateBase64_()

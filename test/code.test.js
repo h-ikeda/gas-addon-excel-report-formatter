@@ -78,10 +78,14 @@ describe('doGet', () => {
 
 describe('createReport', () => {
   const formData = {
-    floor: '2',
-    room_name: 'LDK',
-    x_tilt: '3',
-    y_tilt: '5',
+    property_name: 'サンプル物件',
+    rooms: [
+      {
+        floor: '2',
+        room_name: 'LDK',
+        measurements: { floor_x: { direction: '傾斜無', diff: '0', distance: '2000' } },
+      },
+    ],
   };
 
   function buildEnv({
@@ -137,9 +141,13 @@ describe('createReport', () => {
     expect(options.contentType).toBe('application/json');
     expect(options.muteHttpExceptions).toBe(true);
     expect(options.headers.Authorization).toBe('Bearer id-token-abc');
-    // The payload carries the form fields plus the Base64-encoded template
-    // (bytes [80, 75, 1, 2] -> "UEsBAg==") read from Drive.
-    expect(JSON.parse(options.payload)).toEqual({ ...formData, template: 'UEsBAg==' });
+    // The payload carries the property name and rooms array plus the
+    // Base64-encoded template (bytes [80, 75, 1, 2] -> "UEsBAg==") read from Drive.
+    expect(JSON.parse(options.payload)).toEqual({
+      property_name: formData.property_name,
+      rooms: formData.rooms,
+      template: 'UEsBAg==',
+    });
 
     expect(result).toEqual({ status: 'success', fileName: 'r.xlsx', fileData: 'BASE64' });
   });
