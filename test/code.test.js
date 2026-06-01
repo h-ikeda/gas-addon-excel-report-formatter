@@ -106,19 +106,14 @@ describe('createReport', () => {
   });
 
   test('wraps lower-level failures with a friendly message and logs them', () => {
-    const logger = { log: jest.fn() };
     const fetch = jest.fn(() => {
       throw new Error('network down');
     });
-    const ctx = loadGas({
-      PropertiesService: scriptPropsMock('https://cf.example/gen'),
-      ScriptApp: { getIdentityToken: () => 'tok' },
-      UrlFetchApp: { fetch },
-      Logger: logger,
-    });
+    const env = buildEnv({ token: 'tok', fetch });
+    const ctx = loadGas(env);
 
     expect(() => ctx.createReport(formData)).toThrow(/ファイルの生成に失敗しました: .*network down/);
-    expect(logger.log).toHaveBeenCalled();
+    expect(env.Logger.log).toHaveBeenCalled();
   });
 });
 

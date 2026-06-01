@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+# The test jobs only need to read the repository contents.
+permissions:
+  contents: read
+
 jobs:
   test-functions:
     name: Cloud Function (pytest)
