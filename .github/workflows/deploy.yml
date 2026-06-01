@@ -1,0 +1,45 @@
+name: Deploy to GAS and GCF
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-gas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Install clasp
+        run: npm install -g @google/clasp
+      - name: Authenticate clasp
+        run: |
+          echo '${{ secrets.CLASP_CREDENTIALS }}' > ~/.clasprc.json
+      - name: Deploy to GAS
+        run: |
+          cd gas
+          clasp push -f
+
+  deploy-gcf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - id: auth
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+      - name: Deploy Cloud Function
+        run: |
+          cd functions
+          gcloud functions deploy generate_excel \
+            --runtime python310 \
+            --trigger-http \
+            --allow-unauthenticated \
+            --entry-point generate_excel \
+            --region asia-northeast1

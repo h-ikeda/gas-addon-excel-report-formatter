@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: sans-serif; padding: 20px; background-color: #f4f4f9; }
+    .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h2 { font-size: 1.2em; color: #333; }
+    label { display: block; margin-top: 10px; font-weight: bold; font-size: 0.9em; }
+    input[type="text"], input[type="number"] { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    button { margin-top: 20px; width: 100%; padding: 12px; background-color: #4285f4; color: white; border: none; border-radius: 4px; font-size: 1em; cursor: pointer; }
+    button:disabled { background-color: #aaa; }
+    #message { margin-top: 15px; text-align: center; color: red; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>傾斜測定 報告フォーム</h2>
+    <form id="reportForm">
+      <label>階数</label>
+      <input type="number" id="floor" name="floor" required>
+
+      <label>部屋名 (例: LDK)</label>
+      <input type="text" id="room_name" name="room_name" required>
+
+      <label>X方向 傾斜 (X/1000)</label>
+      <input type="number" id="x_tilt" name="x_tilt">
+
+      <label>Y方向 傾斜 (X/1000)</label>
+      <input type="number" id="y_tilt" name="y_tilt">
+
+      <button type="button" id="submitBtn" onclick="submitForm()">Excel出力</button>
+    </form>
+    <div id="message"></div>
+  </div>
+
+  <script>
+    function submitForm() {
+      const btn = document.getElementById('submitBtn');
+      const msg = document.getElementById('message');
+      btn.disabled = true;
+      btn.innerText = '作成中...';
+      msg.innerText = '';
+
+      const formData = {
+        floor: document.getElementById('floor').value,
+        room_name: document.getElementById('room_name').value,
+        x_tilt: document.getElementById('x_tilt').value,
+        y_tilt: document.getElementById('y_tilt').value
+      };
+
+      google.script.run
+        .withSuccessHandler(function(response) {
+          btn.disabled = false;
+          btn.innerText = 'Excel出力';
+
+          const byteCharacters = atob(response.fileData);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+
+          const link = document.createElement('a');
+          link.href = window.URL.createObjectURL(blob);
+          link.download = response.fileName;
+          link.click();
+
+          msg.style.color = 'green';
+          msg.innerText = 'ダウンロードが完了しました。';
+        })
+        .withFailureHandler(function(error) {
+          btn.disabled = false;
+          btn.innerText = 'Excel出力';
+          msg.style.color = 'red';
+          msg.innerText = error.message;
+        })
+        .createReport(formData);
+    }
+  </script>
+</body>
+</html>
