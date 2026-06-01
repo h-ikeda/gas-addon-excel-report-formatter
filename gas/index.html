@@ -63,26 +63,25 @@
   <script>
     let templateConfigured = false;
 
-    // 各部屋に並べる計測点の定義。雛形に印字済みのラベル構成に合わせている。
-    // バックエンドの mapping.json の measurements と key を一致させること。
+    // 各部屋に並べる計測点の定義。雛形のプルダウン（データ入力規則）に合わせる。
+    //   床: 「傾斜方向」を選ぶ（X=左右, Y=上下, 斜め=斜め4方向）。
+    //   壁・柱: 「どの向きで測定したか」を選ぶ（柱は計測できないとき「―」）。
+    // バックエンドの mapping.json の measurements と key / options を一致させること。
     const MEASUREMENT_GROUPS = [
-      { group: '床', points: [
-        { key: 'floor_x',    label: 'X方向' },
-        { key: 'floor_y',    label: 'Y方向' },
-        { key: 'floor_diag', label: '斜め方向' }
+      { group: '床', selectLabel: '傾斜方向', points: [
+        { key: 'floor_x',    label: 'X方向',   options: ['←', '→', '傾斜無'] },
+        { key: 'floor_y',    label: 'Y方向',   options: ['↑', '↓', '傾斜無'] },
+        { key: 'floor_diag', label: '斜め方向', options: ['↖', '↗', '↘', '↙', '傾斜無'] }
       ]},
-      { group: '壁', points: [
-        { key: 'wall_lower', label: '下壁' },
-        { key: 'wall_left',  label: '左壁' }
+      { group: '壁', selectLabel: '測定した壁', points: [
+        { key: 'wall_ud', label: '上下', options: ['上壁', '下壁'] },
+        { key: 'wall_lr', label: '左右', options: ['右壁', '左壁'] }
       ]},
-      { group: '柱', points: [
-        { key: 'pillar_lower', label: '下柱' },
-        { key: 'pillar_right', label: '右柱' }
+      { group: '柱', selectLabel: '測定した柱', points: [
+        { key: 'pillar_ud', label: '上下', options: ['上柱', '下柱', '―'] },
+        { key: 'pillar_lr', label: '左右', options: ['右柱', '左柱', '―'] }
       ]}
     ];
-
-    // S列（方向・判定）の選択肢。
-    const DIRECTION_OPTIONS = ['', '傾斜無', '↑', '↓', '←', '→', '↗', '↖', '↘', '↙'];
 
     let roomSeq = 0;
 
@@ -111,15 +110,15 @@
       document.getElementById('submitBtn').disabled = !templateConfigured;
     }
 
-    function buildMeasurementHtml(roomId, group, point) {
-      const opts = DIRECTION_OPTIONS
+    function buildMeasurementHtml(group, selectLabel, point) {
+      const opts = [''].concat(point.options)
         .map(function(o) { return '<option value="' + o + '">' + (o || '（なし）') + '</option>'; })
         .join('');
       return '' +
         '<div class="measure">' +
           '<div class="point">' + group + '：' + point.label + '</div>' +
           '<div class="measure-fields">' +
-            '<div><label>方向・判定</label><select data-field="direction" data-point="' + point.key + '">' + opts + '</select></div>' +
+            '<div><label>' + selectLabel + '</label><select data-field="select" data-point="' + point.key + '">' + opts + '</select></div>' +
             '<div><label>測定値の差 (mm)</label><input type="number" step="any" data-field="diff" data-point="' + point.key + '"></div>' +
             '<div><label>距離 (mm)</label><input type="number" step="any" data-field="distance" data-point="' + point.key + '"></div>' +
             '<div><label>水平器計測値</label><input type="number" step="any" data-field="digital_level" data-point="' + point.key + '"></div>' +
@@ -136,7 +135,7 @@
       let groupsHtml = '';
       MEASUREMENT_GROUPS.forEach(function(g) {
         groupsHtml += '<div class="measure-group"><div class="group-title">' + g.group + '</div>';
-        g.points.forEach(function(p) { groupsHtml += buildMeasurementHtml(id, g.group, p); });
+        g.points.forEach(function(p) { groupsHtml += buildMeasurementHtml(g.group, g.selectLabel, p); });
         groupsHtml += '</div>';
       });
 
