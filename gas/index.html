@@ -3,12 +3,13 @@
 <head>
   <base target="_top">
   <style>
-    body { font-family: sans-serif; padding: 20px; background-color: #f4f4f9; }
-    .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    h2 { font-size: 1.2em; color: #333; }
-    label { display: block; margin-top: 10px; font-weight: bold; font-size: 0.9em; }
-    input[type="text"], input[type="number"] { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-    button { margin-top: 20px; width: 100%; padding: 12px; background-color: #4285f4; color: white; border: none; border-radius: 4px; font-size: 1em; cursor: pointer; }
+    body { font-family: sans-serif; padding: 16px; background-color: #f4f4f9; }
+    .container { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h2 { font-size: 1.2em; color: #333; margin-top: 0; }
+    h3 { font-size: 1em; color: #1a3a8f; margin: 0; }
+    label { display: block; margin-top: 10px; font-weight: bold; font-size: 0.85em; }
+    input[type="text"], input[type="number"], select { width: 100%; padding: 9px; margin-top: 4px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
+    button { margin-top: 16px; width: 100%; padding: 12px; background-color: #4285f4; color: white; border: none; border-radius: 4px; font-size: 1em; cursor: pointer; }
     button:disabled { background-color: #aaa; }
     #message { margin-top: 15px; text-align: center; color: red; }
     .template-bar { background: #eef3ff; border: 1px solid #d3e0ff; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.85em; }
@@ -16,6 +17,21 @@
     .template-bar .name { font-weight: bold; color: #1a3a8f; word-break: break-all; }
     .template-bar .unset { color: #c0392b; font-weight: bold; }
     .template-bar button { margin-top: 8px; width: auto; padding: 6px 12px; font-size: 0.85em; background-color: #5f6368; }
+
+    .room { border: 1px solid #d6d6e0; border-radius: 8px; padding: 12px; margin-top: 14px; background: #fafbff; }
+    .room-head { display: flex; justify-content: space-between; align-items: center; }
+    .room-head .remove { width: auto; margin-top: 0; padding: 4px 10px; font-size: 0.8em; background-color: #c0392b; }
+    .room-grid { display: flex; gap: 10px; }
+    .room-grid > div { flex: 1; }
+    .measure-group { margin-top: 10px; }
+    .measure-group > .group-title { font-size: 0.85em; font-weight: bold; color: #555; border-bottom: 1px solid #e2e2ee; padding-bottom: 2px; }
+    .measure { margin-top: 6px; padding: 6px; border: 1px dashed #e0e0ec; border-radius: 6px; }
+    .measure .point { font-size: 0.85em; font-weight: bold; color: #333; }
+    .measure-fields { display: flex; gap: 8px; flex-wrap: wrap; }
+    .measure-fields > div { flex: 1 1 45%; }
+    .measure-fields label { font-weight: normal; font-size: 0.78em; color: #666; }
+    .add-room { background-color: #34a853; }
+    .hint { font-size: 0.78em; color: #777; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -30,18 +46,13 @@
       </div>
     </div>
 
-    <form id="reportForm">
-      <label>階数</label>
-      <input type="number" id="floor" name="floor" required>
+    <form id="reportForm" onsubmit="return false;">
+      <label>住宅(物件)名</label>
+      <input type="text" id="property_name" name="property_name">
 
-      <label>部屋名 (例: LDK)</label>
-      <input type="text" id="room_name" name="room_name" required>
-
-      <label>X方向 傾斜 (X/1000)</label>
-      <input type="number" id="x_tilt" name="x_tilt">
-
-      <label>Y方向 傾斜 (X/1000)</label>
-      <input type="number" id="y_tilt" name="y_tilt">
+      <div id="rooms"></div>
+      <button type="button" class="add-room" onclick="addRoom()">＋ 部屋を追加</button>
+      <p class="hint">部屋数は物件に合わせて増減できます（雛形の上限まで）。</p>
 
       <button type="button" id="submitBtn" onclick="submitForm()">Excel出力</button>
     </form>
@@ -51,6 +62,29 @@
   <script src="https://apis.google.com/js/api.js"></script>
   <script>
     let templateConfigured = false;
+
+    // 各部屋に並べる計測点の定義。雛形に印字済みのラベル構成に合わせている。
+    // バックエンドの mapping.json の measurements と key を一致させること。
+    const MEASUREMENT_GROUPS = [
+      { group: '床', points: [
+        { key: 'floor_x',    label: 'X方向' },
+        { key: 'floor_y',    label: 'Y方向' },
+        { key: 'floor_diag', label: '斜め方向' }
+      ]},
+      { group: '壁', points: [
+        { key: 'wall_lower', label: '下壁' },
+        { key: 'wall_left',  label: '左壁' }
+      ]},
+      { group: '柱', points: [
+        { key: 'pillar_lower', label: '下柱' },
+        { key: 'pillar_right', label: '右柱' }
+      ]}
+    ];
+
+    // S列（方向・判定）の選択肢。
+    const DIRECTION_OPTIONS = ['', '傾斜無', '↑', '↓', '←', '→', '↗', '↖', '↘', '↙'];
+
+    let roomSeq = 0;
 
     // 起動時に現在の雛形設定を取得して表示し、未設定なら出力ボタンを止める。
     function refreshTemplateStatus() {
@@ -75,6 +109,88 @@
 
     function updateSubmitState() {
       document.getElementById('submitBtn').disabled = !templateConfigured;
+    }
+
+    function buildMeasurementHtml(roomId, group, point) {
+      const opts = DIRECTION_OPTIONS
+        .map(function(o) { return '<option value="' + o + '">' + (o || '（なし）') + '</option>'; })
+        .join('');
+      return '' +
+        '<div class="measure">' +
+          '<div class="point">' + group + '：' + point.label + '</div>' +
+          '<div class="measure-fields">' +
+            '<div><label>方向・判定</label><select data-field="direction" data-point="' + point.key + '">' + opts + '</select></div>' +
+            '<div><label>測定値の差 (mm)</label><input type="number" step="any" data-field="diff" data-point="' + point.key + '"></div>' +
+            '<div><label>距離 (mm)</label><input type="number" step="any" data-field="distance" data-point="' + point.key + '"></div>' +
+            '<div><label>水平器計測値</label><input type="number" step="any" data-field="digital_level" data-point="' + point.key + '"></div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function addRoom() {
+      const id = 'room' + (roomSeq++);
+      const wrap = document.createElement('div');
+      wrap.className = 'room';
+      wrap.id = id;
+
+      let groupsHtml = '';
+      MEASUREMENT_GROUPS.forEach(function(g) {
+        groupsHtml += '<div class="measure-group"><div class="group-title">' + g.group + '</div>';
+        g.points.forEach(function(p) { groupsHtml += buildMeasurementHtml(id, g.group, p); });
+        groupsHtml += '</div>';
+      });
+
+      wrap.innerHTML = '' +
+        '<div class="room-head">' +
+          '<h3 class="room-title"></h3>' +
+          '<button type="button" class="remove" onclick="removeRoom(\'' + id + '\')">削除</button>' +
+        '</div>' +
+        '<div class="room-grid">' +
+          '<div><label>階数</label><input type="number" data-room-field="floor"></div>' +
+          '<div><label>部屋名 (例: LDK)</label><input type="text" data-room-field="room_name"></div>' +
+        '</div>' +
+        groupsHtml;
+
+      document.getElementById('rooms').appendChild(wrap);
+      renumberRooms();
+    }
+
+    function removeRoom(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+      renumberRooms();
+    }
+
+    function renumberRooms() {
+      const rooms = document.querySelectorAll('#rooms .room');
+      rooms.forEach(function(r, i) {
+        r.querySelector('.room-title').textContent = '部屋 ' + (i + 1);
+      });
+    }
+
+    // フォームの入力内容を、バックエンドへ送るデータ構造に変換する。
+    function collectFormData() {
+      const rooms = [];
+      document.querySelectorAll('#rooms .room').forEach(function(roomEl) {
+        const measurements = {};
+        roomEl.querySelectorAll('[data-point]').forEach(function(input) {
+          const point = input.getAttribute('data-point');
+          const field = input.getAttribute('data-field');
+          const value = input.value;
+          if (value === '') return;
+          if (!measurements[point]) measurements[point] = {};
+          measurements[point][field] = value;
+        });
+        rooms.push({
+          floor: roomEl.querySelector('[data-room-field="floor"]').value,
+          room_name: roomEl.querySelector('[data-room-field="room_name"]').value,
+          measurements: measurements
+        });
+      });
+      return {
+        property_name: document.getElementById('property_name').value,
+        rooms: rooms
+      };
     }
 
     // Google Picker を開いて Drive 上の雛形ファイルを選ばせる。
@@ -142,7 +258,10 @@
       msg.innerText = text;
     }
 
-    document.addEventListener('DOMContentLoaded', refreshTemplateStatus);
+    document.addEventListener('DOMContentLoaded', function() {
+      refreshTemplateStatus();
+      addRoom(); // 最初の 1 部屋を表示しておく。
+    });
 
     function submitForm() {
       const btn = document.getElementById('submitBtn');
@@ -151,12 +270,23 @@
       btn.innerText = '作成中...';
       msg.innerText = '';
 
-      const formData = {
-        floor: document.getElementById('floor').value,
-        room_name: document.getElementById('room_name').value,
-        x_tilt: document.getElementById('x_tilt').value,
-        y_tilt: document.getElementById('y_tilt').value
-      };
+      const formData = collectFormData();
+
+      // 入力漏れを防ぐ簡単なバリデーション。
+      function abort(text) {
+        showMessage(text, 'red');
+        btn.disabled = false;
+        btn.innerText = 'Excel出力';
+      }
+      if (formData.rooms.length === 0) {
+        return abort('部屋を少なくとも1つ追加してください。');
+      }
+      for (let i = 0; i < formData.rooms.length; i++) {
+        const r = formData.rooms[i];
+        if (!r.floor.trim() || !r.room_name.trim()) {
+          return abort('部屋 ' + (i + 1) + ' の階数と部屋名を入力してください。');
+        }
+      }
 
       google.script.run
         .withSuccessHandler(function(response) {
