@@ -45,11 +45,15 @@ jobs:
       - name: Deploy Cloud Function
         run: |
           cd functions
+          # 認証必須（非公開）でデプロイする。
+          # --allow-unauthenticated は付けない（allUsers への setIamPolicy が走り、
+          # デプロイ用 SA に run.services.setIamPolicy が無いとデプロイが失敗するため）。
+          # 呼び出し許可（roles/run.invoker）はワークスペースのドメイン/グループへ
+          # 別途 IAM で付与する。
           gcloud functions deploy generate_excel \
             --gen2 \
             --runtime python310 \
             --trigger-http \
-            --allow-unauthenticated \
             --entry-point generate_excel \
             --region asia-northeast1 \
             --project '${{ vars.PROJECT_ID }}'
