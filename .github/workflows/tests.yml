@@ -1,0 +1,44 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# The test jobs only need to read the repository contents.
+permissions:
+  contents: read
+
+jobs:
+  test-functions:
+    name: Cloud Function (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          cd functions
+          pip install -r requirements-dev.txt
+      - name: Run tests
+        run: |
+          cd functions
+          python -m pytest -q
+
+  test-gas:
+    name: GAS frontend (jest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test

@@ -41,6 +41,31 @@
 - [ ] **Phase 4: 実運用向けチューニング**
   - エラーハンドリングの強化、UI/UXの改善、生成したExcelのGoogle Driveへの自動保存機能の実装など。
 
+## 🧪 テスト
+
+ソースコード（`gas/Code.gs`・`functions/main.py`）には手を加えず、現在の挙動を確認・固定するためのテストを用意しています。
+
+### バックエンド (Cloud Function / pytest)
+
+Functions Framework のテストクライアント経由で `generate_excel` を呼び出し、CORS プリフライト・Excel への値の書き込み・各種エラー応答（400 / 500）を検証します。
+
+```bash
+cd functions
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+### フロントエンド (GAS / Jest)
+
+`gas/Code.gs` を Node の `vm` 上に読み込み、Apps Script の各サービス（`PropertiesService`・`UrlFetchApp`・`ScriptApp` など）をモック化して `createReport` / `doGet` などの挙動を検証します。
+
+```bash
+npm install
+npm test
+```
+
+テスト関連ファイルはデプロイ対象から除外しています（GCF は `functions/.gcloudignore`、GAS のテストは `gas/` ディレクトリ外に配置）。CI では `.github/workflows/tests.yml` が push / PR ごとに両テストを実行します。
+
 ## ⚙️ 開発・デプロイ環境のセットアップ
 
 GitHub Actions を利用した自動デプロイを機能させるため、本リポジトリの **Settings > Secrets and variables > Actions** に以下の変数を設定しています。

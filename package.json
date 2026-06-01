@@ -1,0 +1,12 @@
+{
+  "name": "gas-addon-excel-report-formatter-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tests for the Google Apps Script frontend (gas/Code.gs).",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^30.0.0"
+  }
+}
