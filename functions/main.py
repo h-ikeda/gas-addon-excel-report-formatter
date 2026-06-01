@@ -3,17 +3,25 @@ import base64
 import io
 import json
 import os
+import unicodedata
 from openpyxl import load_workbook
 from flask import jsonify
 
 # 書き込み位置（セルマッピング）は mapping.json に切り出している。
 # フォーマットが微修正された場合は、原則 mapping.json を編集するだけで追従できる。
 _MAPPING_PATH = os.path.join(os.path.dirname(__file__), 'mapping.json')
+_MAPPING = None
 
 
 def _load_mapping():
-    with open(_MAPPING_PATH, encoding='utf-8') as f:
-        return json.load(f)
+    # mapping.json は静的な設定ファイルなので、一度読み込んだらキャッシュする。
+    # Cloud Functions のインスタンスはリクエスト間で再利用されるため、毎回の
+    # ディスク I/O を避けられる。
+    global _MAPPING
+    if _MAPPING is None:
+        with open(_MAPPING_PATH, encoding='utf-8') as f:
+            _MAPPING = json.load(f)
+    return _MAPPING
 
 
 def _to_cell_value(value):
@@ -30,6 +38,10 @@ def _to_cell_value(value):
     text = str(value).strip()
     if text == '':
         return None
+    # モバイルの日本語入力では全角の数字・記号（－ ． など）が混じりやすい。
+    # NFKC 正規化で半角へ寄せてから数値判定することで、Excel 側で数値として
+    # 認識されず数式が計算されない事故を防ぐ。
+    text = unicodedata.normalize('NFKC', text)
     try:
         if text.lstrip('-').isdigit():
             return int(text)
@@ -62,6 +74,10 @@ def _clear_data_cells(ws, mapping):
 
 def _write_room(ws, mapping, start_row, room):
     """1 部屋ぶんのデータを、先頭行 start_row のブロックへ書き込む。"""
+    # 不正な形（None や辞書以外）の要素は無視し、AttributeError を防ぐ。
+    if not isinstance(room, dict):
+        return
+
     block = mapping['room_block']
 
     ws[f"{block['floor_col']}{start_row}"] = _to_cell_value(room.get('floor'))

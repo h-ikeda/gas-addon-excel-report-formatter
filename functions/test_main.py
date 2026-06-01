@@ -125,6 +125,31 @@ def test_post_valid_data_writes_values_into_template(client):
     assert ws[_measurement_cell(0, "floor_y", "distance")].value == 1500
 
 
+def test_fullwidth_numbers_are_normalized_to_numeric(client):
+    # Mobile IME often produces full-width digits/signs; they must be coerced to
+    # real numbers so the AJ formula (=1000*AC/AG) can compute.
+    resp = client.post("/", json=_payload(rooms=[{
+        "floor": "２", "room_name": "LDK",
+        "measurements": {"floor_x": {"diff": "－３", "distance": "１５００"}},
+    }]))
+    ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
+
+    assert ws[f"{BLOCK['floor_col']}{STARTS[0]}"].value == 2
+    assert ws[_measurement_cell(0, "floor_x", "diff")].value == -3
+    assert ws[_measurement_cell(0, "floor_x", "distance")].value == 1500
+
+
+def test_non_dict_room_entries_are_skipped(client):
+    # A malformed rooms array (containing a null) must not crash the function.
+    resp = client.post("/", json=_payload(rooms=[
+        None,
+        {"floor": "2", "room_name": "寝室", "measurements": {}},
+    ]))
+    assert resp.status_code == 200
+    ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
+    assert ws[f"{BLOCK['room_name_col']}{STARTS[1]}"].value == "寝室"
+
+
 def test_multiple_rooms_map_to_successive_blocks(client):
     rooms = [
         {"floor": "1", "room_name": "玄関", "measurements": {}},

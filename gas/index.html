@@ -112,7 +112,6 @@
     }
 
     function buildMeasurementHtml(roomId, group, point) {
-      const base = roomId + '__' + point.key;
       const opts = DIRECTION_OPTIONS
         .map(function(o) { return '<option value="' + o + '">' + (o || '（なし）') + '</option>'; })
         .join('');
@@ -272,6 +271,22 @@
       msg.innerText = '';
 
       const formData = collectFormData();
+
+      // 入力漏れを防ぐ簡単なバリデーション。
+      function abort(text) {
+        showMessage(text, 'red');
+        btn.disabled = false;
+        btn.innerText = 'Excel出力';
+      }
+      if (formData.rooms.length === 0) {
+        return abort('部屋を少なくとも1つ追加してください。');
+      }
+      for (let i = 0; i < formData.rooms.length; i++) {
+        const r = formData.rooms[i];
+        if (!r.floor.trim() || !r.room_name.trim()) {
+          return abort('部屋 ' + (i + 1) + ' の階数と部屋名を入力してください。');
+        }
+      }
 
       google.script.run
         .withSuccessHandler(function(response) {
