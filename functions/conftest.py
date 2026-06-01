@@ -1,11 +1,4 @@
-import os
-
-import pytest
-
-
-# generate_excel reads ``template.xlsx`` via a relative path, so the tests must
-# run with the working directory set to this ``functions`` directory regardless
-# of where pytest was invoked from.
-@pytest.fixture(autouse=True)
-def _chdir_to_functions(monkeypatch):
-    monkeypatch.chdir(os.path.dirname(__file__))
+# Shared pytest configuration for the Cloud Function tests.
+#
+# The function no longer reads a bundled template from disk — the template is
+# supplied in the request body — so no working-directory fixture is required.

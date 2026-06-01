@@ -11,11 +11,25 @@
     button { margin-top: 20px; width: 100%; padding: 12px; background-color: #4285f4; color: white; border: none; border-radius: 4px; font-size: 1em; cursor: pointer; }
     button:disabled { background-color: #aaa; }
     #message { margin-top: 15px; text-align: center; color: red; }
+    .template-bar { background: #eef3ff; border: 1px solid #d3e0ff; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.85em; }
+    .template-bar .label { color: #555; }
+    .template-bar .name { font-weight: bold; color: #1a3a8f; word-break: break-all; }
+    .template-bar .unset { color: #c0392b; font-weight: bold; }
+    .template-bar button { margin-top: 8px; width: auto; padding: 6px 12px; font-size: 0.85em; background-color: #5f6368; }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>傾斜測定 報告フォーム</h2>
+
+    <div class="template-bar">
+      <span class="label">使用中の Excel 雛形: </span>
+      <span id="templateName" class="name">確認中...</span>
+      <div>
+        <button type="button" id="templateBtn" onclick="openPicker()">雛形を設定</button>
+      </div>
+    </div>
+
     <form id="reportForm">
       <label>階数</label>
       <input type="number" id="floor" name="floor" required>
@@ -34,7 +48,98 @@
     <div id="message"></div>
   </div>
 
+  <script src="https://apis.google.com/js/api.js"></script>
   <script>
+    let templateConfigured = false;
+
+    // 起動時に現在の雛形設定を取得して表示し、未設定なら出力ボタンを止める。
+    function refreshTemplateStatus() {
+      google.script.run
+        .withSuccessHandler(function(status) {
+          templateConfigured = status.configured;
+          const nameEl = document.getElementById('templateName');
+          if (status.configured) {
+            nameEl.textContent = status.fileName;
+            nameEl.className = 'name';
+          } else {
+            nameEl.textContent = '未設定（「雛形を設定」から選択してください）';
+            nameEl.className = 'unset';
+          }
+          updateSubmitState();
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('templateName').textContent = error.message;
+        })
+        .getTemplateStatus();
+    }
+
+    function updateSubmitState() {
+      document.getElementById('submitBtn').disabled = !templateConfigured;
+    }
+
+    // Google Picker を開いて Drive 上の雛形ファイルを選ばせる。
+    function openPicker() {
+      const btn = document.getElementById('templateBtn');
+      btn.disabled = true;
+      btn.textContent = '読み込み中...';
+      google.script.run
+        .withSuccessHandler(function(config) {
+          gapi.load('picker', { callback: function() { showPicker(config); } });
+        })
+        .withFailureHandler(function(error) {
+          btn.disabled = false;
+          btn.textContent = '雛形を設定';
+          showMessage(error.message, 'red');
+        })
+        .getPickerConfig();
+    }
+
+    function showPicker(config) {
+      const btn = document.getElementById('templateBtn');
+      btn.disabled = false;
+      btn.textContent = '雛形を設定';
+
+      // .xlsx を含む Excel ファイルを選択対象にする。
+      const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
+        .setMimeTypes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .setIncludeFolders(true)
+        .setSelectFolderEnabled(false);
+
+      const picker = new google.picker.PickerBuilder()
+        .setOAuthToken(config.token)
+        .setDeveloperKey(config.apiKey)
+        .setAppId(config.appId)
+        .addView(view)
+        .setCallback(pickerCallback)
+        .build();
+      picker.setVisible(true);
+    }
+
+    function pickerCallback(data) {
+      if (data.action !== google.picker.Action.PICKED) {
+        return;
+      }
+      const fileId = data.docs[0].id;
+      showMessage('雛形を保存しています...', '#333');
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showMessage('雛形を設定しました: ' + result.fileName, 'green');
+          refreshTemplateStatus();
+        })
+        .withFailureHandler(function(error) {
+          showMessage(error.message, 'red');
+        })
+        .saveTemplateSelection(fileId);
+    }
+
+    function showMessage(text, color) {
+      const msg = document.getElementById('message');
+      msg.style.color = color;
+      msg.innerText = text;
+    }
+
+    document.addEventListener('DOMContentLoaded', refreshTemplateStatus);
+
     function submitForm() {
       const btn = document.getElementById('submitBtn');
       const msg = document.getElementById('message');

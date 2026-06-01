@@ -23,8 +23,15 @@ def generate_excel(request):
         if not request_json:
             return jsonify({"error": "No data provided"}), 400, headers
 
-        # テンプレートの読み込み
-        wb = load_workbook(filename='template.xlsx')
+        # 雛形（テンプレート）は GAS 側が Google Drive から読み取り、Base64 で
+        # 渡してくる。社外秘フォーマットを Cloud Function に同梱しないことで、
+        # フォーマット更新時の再デプロイを不要にし、ファイルのアクセス範囲を
+        # 社内の閲覧可能者だけに閉じる。
+        template_b64 = request_json.get('template')
+        if not template_b64:
+            return jsonify({"error": "No template provided"}), 400, headers
+
+        wb = load_workbook(filename=io.BytesIO(base64.b64decode(template_b64)))
         ws = wb['傾斜測定']
 
         # データの書き込み (セル位置は調整してください)
