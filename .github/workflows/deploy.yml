@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: '18'
       - name: Install clasp
-        run: npm install -g @google/clasp
+        run: npm install -g @google/clasp@2.4.2
       - name: Authenticate clasp
         run: |
           echo '${{ secrets.CLASP_CREDENTIALS }}' > ~/.clasprc.json
@@ -47,5 +47,5 @@ jobs:
             --trigger-http \
             --allow-unauthenticated \
             --entry-point generate_excel \
-            --region asia-northeast1
+            --region asia-northeast1 \
             --project '${{ vars.PROJECT_ID }}'
