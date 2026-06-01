@@ -85,6 +85,11 @@ function fetchTemplateBase64_() {
   let latest = null;
   while (files.hasNext()) {
     const file = files.next();
+    // ゴミ箱内の同名ファイルは対象外にする（getFilesByName はゴミ箱の
+    // ファイルも返し得るため、更新日時が新しくても採用しない）。
+    if (file.isTrashed()) {
+      continue;
+    }
     if (!latest || file.getLastUpdated() > latest.getLastUpdated()) {
       latest = file;
     }
@@ -123,6 +128,11 @@ function saveTemplateSelection(fileId) {
     throw new Error('ファイルが選択されていません。');
   }
   const file = DriveApp.getFileById(fileId);
+  // Google スプレッドシート等を選ぶと getBlob() が PDF を返してしまい、
+  // バックエンドの openpyxl が読み込みに失敗する。ネイティブ .xlsx だけを許可する。
+  if (file.getMimeType() !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+    throw new Error('Google スプレッドシート等の形式はサポートされていません。Excel 形式 (.xlsx) のファイルを選択してください。');
+  }
   const parents = file.getParents();
   if (!parents.hasNext()) {
     throw new Error('選択したファイルの親フォルダを特定できませんでした。マイドライブ直下ではなくフォルダ内に雛形を置いてください。');

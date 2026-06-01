@@ -29,12 +29,17 @@ function makeIterator(items) {
   return { hasNext: () => i < items.length, next: () => items[i++] };
 }
 
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
 // A DriveApp mock backed by a list of {name, updated, bytes} file descriptors.
+// Each descriptor may also set `mime` (defaults to xlsx) and `trashed`.
 function driveAppMock({ files = [{ name: 'template.xlsx', updated: '2026-01-01', bytes: [80, 75, 1, 2], parent: 'folder-1', id: 'file-1' }] } = {}) {
   function toFile(f) {
     return {
       getName: () => f.name,
       getId: () => f.id || 'file-1',
+      getMimeType: () => f.mime || XLSX_MIME,
+      isTrashed: () => !!f.trashed,
       getLastUpdated: () => new Date(f.updated),
       getBlob: () => ({ getBytes: () => f.bytes }),
       getParents: () => makeIterator(f.parent ? [{ getId: () => f.parent }] : []),
@@ -233,6 +238,19 @@ describe('saveTemplateSelection', () => {
     expect(() => ctx.saveTemplateSelection('')).toThrow(/ファイルが選択されていません/);
   });
 
+  test('rejects a non-xlsx file such as a native Google Sheet', () => {
+    const props = scriptPropsMock({});
+    const drive = driveAppMock({
+      files: [{ name: 'sheet', updated: '2026-01-01', bytes: [1], parent: 'p', id: 'gs-1', mime: 'application/vnd.google-apps.spreadsheet' }],
+    });
+    const ctx = loadGas({ PropertiesService: props, DriveApp: drive });
+
+    expect(() => ctx.saveTemplateSelection('gs-1')).toThrow(/Excel 形式 \(\.xlsx\)/);
+    // Nothing should have been persisted.
+    expect(props._map.TEMPLATE_FOLDER_ID).toBeUndefined();
+    expect(props._map.TEMPLATE_FILE_NAME).toBeUndefined();
+  });
+
   test('throws when the selected file has no parent folder', () => {
     const drive = driveAppMock({
       files: [{ name: 'x.xlsx', updated: '2026-01-01', bytes: [1], parent: null, id: 'doc-1' }],
@@ -286,6 +304,26 @@ describe('fetchTemplateBase64_', () => {
 
     // Bytes [80, 75, 9, 9] of the newer file -> "UEsJCQ==".
     expect(ctx.fetchTemplateBase64_()).toBe('UEsJCQ==');
+  });
+
+  test('skips trashed files even when they have the newest timestamp', () => {
+    const drive = driveAppMock({
+      files: [
+        { name: 'template.xlsx', updated: '2025-01-01', bytes: [80, 75, 5, 5], parent: 'folder-1' },
+        { name: 'template.xlsx', updated: '2026-12-31', bytes: [9, 9], parent: 'folder-1', trashed: true },
+      ],
+    });
+    const ctx = loadGas({
+      PropertiesService: scriptPropsMock({
+        TEMPLATE_FOLDER_ID: 'folder-1',
+        TEMPLATE_FILE_NAME: 'template.xlsx',
+      }),
+      DriveApp: drive,
+      Utilities: { base64Encode: (bytes) => Buffer.from(bytes).toString('base64') },
+    });
+
+    // The trashed (newer) file is ignored; the live file's bytes [80,75,5,5] -> "UEsFBQ==".
+    expect(ctx.fetchTemplateBase64_()).toBe('UEsFBQ==');
   });
 
   test('throws when the named file is absent from the folder', () => {
