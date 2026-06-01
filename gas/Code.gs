@@ -32,7 +32,7 @@ function createReport(formData) {
     // ID トークンを付与する。Cloud Run 側にはこのトークンの aud（= 本 GAS の
     // OAuth クライアント ID）をカスタム audience として登録しておくこと。
     headers: {
-      Authorization: 'Bearer ' + ScriptApp.getIdentityToken()
+      Authorization: 'Bearer ' + getIdentityTokenOrThrow()
     },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
@@ -66,11 +66,25 @@ function createReport(formData) {
  *     --add-custom-audiences=<ここに出力された値>
  */
 function logIdentityTokenAudience() {
-  const token = ScriptApp.getIdentityToken();
+  const token = getIdentityTokenOrThrow();
   const payloadJson = Utilities.newBlob(
     Utilities.base64DecodeWebSafe(token.split('.')[1])
   ).getDataAsString();
   const aud = JSON.parse(payloadJson).aud;
   Logger.log('カスタム audience に登録する値 (aud): ' + aud);
   return aud;
+}
+
+/**
+ * 実行ユーザーの OpenID Connect ID トークンを返す。
+ * 取得できない（null）場合は分かりやすいエラーを投げる。
+ * getIdentityToken() は openid スコープが未承認だと null を返すため、
+ * "Bearer null" での認証失敗や token.split() の TypeError を防ぐ。
+ */
+function getIdentityTokenOrThrow() {
+  const token = ScriptApp.getIdentityToken();
+  if (!token) {
+    throw new Error('ID トークンを取得できませんでした。OAuth スコープ（openid）が承認されているか確認してください。');
+  }
+  return token;
 }
