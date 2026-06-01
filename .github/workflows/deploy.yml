@@ -46,6 +46,7 @@ jobs:
         run: |
           cd functions
           gcloud functions deploy generate_excel \
+            --gen2 \
             --runtime python310 \
             --trigger-http \
             --allow-unauthenticated \
