@@ -42,10 +42,23 @@ jobs:
           service_account: '${{ vars.SA_EMAIL }}'
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3
+      - name: Enable required GCP APIs
+        run: |
+          gcloud services enable \
+            cloudresourcemanager.googleapis.com \
+            serviceusage.googleapis.com \
+            cloudfunctions.googleapis.com \
+            cloudbuild.googleapis.com \
+            artifactregistry.googleapis.com \
+            run.googleapis.com \
+            eventarc.googleapis.com \
+            logging.googleapis.com \
+            --project '${{ vars.PROJECT_ID }}'
       - name: Deploy Cloud Function
         run: |
           cd functions
           gcloud functions deploy generate_excel \
+            --gen2 \
             --runtime python310 \
             --trigger-http \
             --allow-unauthenticated \
