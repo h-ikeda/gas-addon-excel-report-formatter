@@ -1,0 +1,7 @@
+# Node (JS test harness)
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/

@@ -1,0 +1,16 @@
+# Keep deployment uploads limited to runtime code. Test-only and local
+# artifacts below are never needed by the Cloud Function at runtime.
+.gcloudignore
+.git
+.gitignore
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Tests and dev-only dependencies
+conftest.py
+test_*.py
+*_test.py
+requirements-dev.txt
