@@ -23,10 +23,19 @@ jobs:
         run: |
           cd gas
           sed -i "s/YOUR_SCRIPT_ID_HERE/${{ secrets.GAS_SCRIPT_ID }}/" .clasp.json
-      - name: Deploy to GAS
+      - name: Push to GAS
         run: |
           cd gas
           clasp push -f
+      - name: Deploy to GAS
+        run: |
+          cd gas
+          # 既存デプロイ（固定 URL）を更新する。新しいバージョンを発行して
+          # GAS_DEPLOYMENT_ID のデプロイへ紐付けるため、ウェブアプリの URL は
+          # 変わらないまま中身だけ更新される。
+          clasp create-deployment \
+            --deploymentId '${{ secrets.GAS_DEPLOYMENT_ID }}' \
+            --description "GitHub Actions ${{ github.sha }}"
 
   deploy-gcf:
     runs-on: ubuntu-latest
