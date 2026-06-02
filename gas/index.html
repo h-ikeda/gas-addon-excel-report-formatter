@@ -2,7 +2,7 @@
 <html>
 <head>
   <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: sans-serif; padding: 16px; background-color: #f4f4f9; }
     .container { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -41,7 +41,8 @@
     .measure-table col.col-point { width: 24%; }
     .measure-table td.point-cell { font-size: 0.78em; font-weight: bold; color: #333; background: #fafbff; text-align: left; padding-left: 6px; white-space: nowrap; }
     .measure-table tr.group-row td { background: #ececf5; color: #555; font-size: 0.74em; font-weight: bold; text-align: left; padding: 3px 6px; }
-    .measure-table select, .measure-table input { width: 100%; padding: 5px 2px; margin-top: 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 0.9em; text-align: center; }
+    /* iOS Safari はフォントサイズ 16px 未満の入力欄でフォーカス時にズームする。1rem で固定して防ぐ。 */
+    .measure-table select, .measure-table input { width: 100%; padding: 5px 2px; margin-top: 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 1rem; text-align: center; }
     .add-room { background-color: #34a853; }
     .hint { font-size: 0.78em; color: #777; margin-top: 4px; }
   </style>
