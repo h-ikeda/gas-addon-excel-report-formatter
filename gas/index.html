@@ -18,18 +18,24 @@
     .template-bar .unset { color: #c0392b; font-weight: bold; }
     .template-bar button { margin-top: 8px; width: auto; padding: 6px 12px; font-size: 0.85em; background-color: #5f6368; }
 
-    .room { border: 1px solid #d6d6e0; border-radius: 8px; padding: 12px; margin-top: 14px; background: #fafbff; }
-    .room-head { display: flex; justify-content: space-between; align-items: center; }
-    .room-head .remove { width: auto; margin-top: 0; padding: 4px 10px; font-size: 0.8em; background-color: #c0392b; }
-    .room-grid { display: flex; gap: 10px; }
-    .room-grid > div { flex: 1; }
-    .measure-group { margin-top: 10px; }
-    .measure-group > .group-title { font-size: 0.85em; font-weight: bold; color: #555; border-bottom: 1px solid #e2e2ee; padding-bottom: 2px; }
-    .measure { margin-top: 6px; padding: 6px; border: 1px dashed #e0e0ec; border-radius: 6px; }
-    .measure .point { font-size: 0.85em; font-weight: bold; color: #333; }
-    .measure-fields { display: flex; gap: 8px; flex-wrap: wrap; }
-    .measure-fields > div { flex: 1 1 45%; }
-    .measure-fields label { font-weight: normal; font-size: 0.78em; color: #666; }
+    .room { border: 1px solid #d6d6e0; border-radius: 8px; padding: 10px; margin-top: 14px; background: #fafbff; }
+    .room-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .room-head h3 { white-space: nowrap; }
+    .room-head .remove { width: auto; margin-top: 0; margin-left: auto; padding: 4px 10px; font-size: 0.8em; background-color: #c0392b; }
+    .room-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .room-meta label { display: inline; margin-top: 0; font-size: 0.8em; }
+    .room-meta input { width: auto; margin-top: 0; padding: 5px 6px; }
+    .room-meta input[data-room-field="floor"] { width: 56px; }
+    .room-meta input[data-room-field="room_name"] { width: 110px; }
+
+    /* 計測値は選択と数値しか入れないので、表形式で縦に詰めてラベルはヘッダー列で代表する。 */
+    .measure-table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+    .measure-table th, .measure-table td { border: 1px solid #e3e3ef; padding: 2px 3px; text-align: center; }
+    .measure-table thead th { background: #eef3ff; color: #1a3a8f; font-size: 0.72em; font-weight: bold; padding: 4px 3px; }
+    .measure-table col.col-point { width: 24%; }
+    .measure-table td.point-cell { font-size: 0.78em; font-weight: bold; color: #333; background: #fafbff; text-align: left; padding-left: 6px; white-space: nowrap; }
+    .measure-table tr.group-row td { background: #ececf5; color: #555; font-size: 0.74em; font-weight: bold; text-align: left; padding: 3px 6px; }
+    .measure-table select, .measure-table input { width: 100%; padding: 5px 2px; margin-top: 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 0.9em; }
     .add-room { background-color: #34a853; }
     .hint { font-size: 0.78em; color: #777; margin-top: 4px; }
   </style>
@@ -110,20 +116,23 @@
       document.getElementById('submitBtn').disabled = !templateConfigured;
     }
 
-    function buildMeasurementHtml(group, selectLabel, point) {
+    // 1 つの計測点を表の 1 行にする。ラベル（差/距離/水平器）はヘッダー列で代表する。
+    // 数値欄は inputmode="decimal" で半角数字キーパッドを出す。
+    function buildMeasurementRow(point) {
       const opts = [''].concat(point.options)
         .map(function(o) { return '<option value="' + o + '">' + (o || '（なし）') + '</option>'; })
         .join('');
+      function numCell(field) {
+        return '<td><input type="number" inputmode="decimal" step="any" data-field="' + field + '" data-point="' + point.key + '"></td>';
+      }
       return '' +
-        '<div class="measure">' +
-          '<div class="point">' + group + '：' + point.label + '</div>' +
-          '<div class="measure-fields">' +
-            '<div><label>' + selectLabel + '</label><select data-field="select" data-point="' + point.key + '">' + opts + '</select></div>' +
-            '<div><label>測定値の差 (mm)</label><input type="number" step="any" data-field="diff" data-point="' + point.key + '"></div>' +
-            '<div><label>距離 (mm)</label><input type="number" step="any" data-field="distance" data-point="' + point.key + '"></div>' +
-            '<div><label>水平器計測値</label><input type="number" step="any" data-field="digital_level" data-point="' + point.key + '"></div>' +
-          '</div>' +
-        '</div>';
+        '<tr>' +
+          '<td class="point-cell">' + point.label + '</td>' +
+          '<td><select data-field="select" data-point="' + point.key + '">' + opts + '</select></td>' +
+          numCell('diff') +
+          numCell('distance') +
+          numCell('digital_level') +
+        '</tr>';
     }
 
     function addRoom() {
@@ -132,23 +141,29 @@
       wrap.className = 'room';
       wrap.id = id;
 
-      let groupsHtml = '';
+      // グループごとに見出し行を挟みつつ、計測点を 1 行ずつ並べる。
+      let rowsHtml = '';
       MEASUREMENT_GROUPS.forEach(function(g) {
-        groupsHtml += '<div class="measure-group"><div class="group-title">' + g.group + '</div>';
-        g.points.forEach(function(p) { groupsHtml += buildMeasurementHtml(g.group, g.selectLabel, p); });
-        groupsHtml += '</div>';
+        rowsHtml += '<tr class="group-row"><td colspan="5">' + g.group + '（' + g.selectLabel + '）</td></tr>';
+        g.points.forEach(function(p) { rowsHtml += buildMeasurementRow(p); });
       });
 
       wrap.innerHTML = '' +
         '<div class="room-head">' +
           '<h3 class="room-title"></h3>' +
+          '<div class="room-meta">' +
+            '<label>階数</label><input type="number" inputmode="numeric" data-room-field="floor">' +
+            '<label>部屋名</label><input type="text" data-room-field="room_name" placeholder="例: LDK">' +
+          '</div>' +
           '<button type="button" class="remove" onclick="removeRoom(\'' + id + '\')">削除</button>' +
         '</div>' +
-        '<div class="room-grid">' +
-          '<div><label>階数</label><input type="number" data-room-field="floor"></div>' +
-          '<div><label>部屋名 (例: LDK)</label><input type="text" data-room-field="room_name"></div>' +
-        '</div>' +
-        groupsHtml;
+        '<table class="measure-table">' +
+          '<colgroup><col class="col-point"><col><col><col><col></colgroup>' +
+          '<thead><tr>' +
+            '<th>計測点</th><th>選択</th><th>差 (mm)</th><th>距離 (mm)</th><th>水平器</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rowsHtml + '</tbody>' +
+        '</table>';
 
       document.getElementById('rooms').appendChild(wrap);
       renumberRooms();
