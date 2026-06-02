@@ -9,6 +9,10 @@
     h3 { font-size: 1em; color: #1a3a8f; margin: 0; }
     label { display: block; margin-top: 10px; font-weight: bold; font-size: 0.85em; }
     input[type="text"], input[type="number"], select { width: 100%; padding: 9px; margin-top: 4px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
+    /* スピナー（数値の増減ボタン）は不要なので非表示にする。狭い欄でも数値が隠れない。 */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
     button { margin-top: 16px; width: 100%; padding: 12px; background-color: #4285f4; color: white; border: none; border-radius: 4px; font-size: 1em; cursor: pointer; }
     button:disabled { background-color: #aaa; }
     #message { margin-top: 15px; text-align: center; color: red; }
@@ -35,7 +39,7 @@
     .measure-table col.col-point { width: 24%; }
     .measure-table td.point-cell { font-size: 0.78em; font-weight: bold; color: #333; background: #fafbff; text-align: left; padding-left: 6px; white-space: nowrap; }
     .measure-table tr.group-row td { background: #ececf5; color: #555; font-size: 0.74em; font-weight: bold; text-align: left; padding: 3px 6px; }
-    .measure-table select, .measure-table input { width: 100%; padding: 5px 2px; margin-top: 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 0.9em; }
+    .measure-table select, .measure-table input { width: 100%; padding: 5px 2px; margin-top: 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 0.9em; text-align: center; }
     .add-room { background-color: #34a853; }
     .hint { font-size: 0.78em; color: #777; margin-top: 4px; }
   </style>
