@@ -2,6 +2,7 @@
 <html>
 <head>
   <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <style>
     body { font-family: sans-serif; padding: 16px; background-color: #f4f4f9; }
     .container { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -23,9 +24,10 @@
     .template-bar button { margin-top: 8px; width: auto; padding: 6px 12px; font-size: 0.85em; background-color: #5f6368; }
 
     .room { border: 1px solid #d6d6e0; border-radius: 8px; padding: 10px; margin-top: 14px; background: #fafbff; }
-    .room-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .room-head h3 { white-space: nowrap; }
-    .room-head .remove { width: auto; margin-top: 0; margin-left: auto; padding: 4px 10px; font-size: 0.8em; background-color: #c0392b; }
+    .room-head { display: flex; flex-direction: column; gap: 8px; }
+    .room-title-row { display: flex; align-items: center; justify-content: space-between; }
+    .room-title-row h3 { white-space: nowrap; }
+    .room-head .remove { width: auto; margin-top: 0; padding: 4px 10px; font-size: 0.8em; background-color: #c0392b; }
     .room-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .room-meta label { display: inline; margin-top: 0; font-size: 0.8em; }
     .room-meta input { width: auto; margin-top: 0; padding: 5px 6px; }
@@ -154,17 +156,19 @@
 
       wrap.innerHTML = '' +
         '<div class="room-head">' +
-          '<h3 class="room-title"></h3>' +
+          '<div class="room-title-row">' +
+            '<h3 class="room-title"></h3>' +
+            '<button type="button" class="remove" onclick="removeRoom(\'' + id + '\')">削除</button>' +
+          '</div>' +
           '<div class="room-meta">' +
             '<label>階数</label><input type="number" inputmode="numeric" data-room-field="floor">' +
             '<label>部屋名</label><input type="text" data-room-field="room_name" placeholder="例: LDK">' +
           '</div>' +
-          '<button type="button" class="remove" onclick="removeRoom(\'' + id + '\')">削除</button>' +
         '</div>' +
         '<table class="measure-table">' +
           '<colgroup><col class="col-point"><col><col><col><col></colgroup>' +
           '<thead><tr>' +
-            '<th>計測点</th><th>選択</th><th>差 (mm)</th><th>距離 (mm)</th><th>水平器</th>' +
+            '<th>計測点</th><th>選択</th><th>差 (mm)</th><th>距離 (mm)</th><th>水平器 (10<sup>-3</sup>)</th>' +
           '</tr></thead>' +
           '<tbody>' + rowsHtml + '</tbody>' +
         '</table>';
@@ -279,6 +283,14 @@
     document.addEventListener('DOMContentLoaded', function() {
       refreshTemplateStatus();
       addRoom(); // 最初の 1 部屋を表示しておく。
+
+      // 方向選択後、同じ行の水平器入力欄へ自動フォーカスする。
+      document.getElementById('rooms').addEventListener('change', function(e) {
+        if (e.target.tagName === 'SELECT' && e.target.dataset.field === 'select') {
+          const levelInput = e.target.closest('tr').querySelector('input[data-field="digital_level"]');
+          if (levelInput) levelInput.focus();
+        }
+      });
     });
 
     function submitForm() {
