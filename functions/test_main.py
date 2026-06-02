@@ -58,12 +58,23 @@ def _decode_workbook(file_data):
     return load_workbook(io.BytesIO(raw))
 
 
-def _measurement_cell(room_index, measurement_key, field):
-    """Resolve the cell a given room/measurement/field should be written to,
+def _measurement(measurement_key):
+    return next(m for m in BLOCK["measurements"] if m["key"] == measurement_key)
+
+
+def _value_cell(room_index, measurement_key, field):
+    """Resolve the cell a numeric value (diff/distance/digital_level) lands in,
     straight from the mapping, so assertions follow the config."""
     start = STARTS[room_index]
-    offset = next(m["row_offset"] for m in BLOCK["measurements"] if m["key"] == measurement_key)
-    return f"{BLOCK['fields'][field]}{start + offset}"
+    offset = _measurement(measurement_key)["row_offset"]
+    return f"{BLOCK['value_fields'][field]}{start + offset}"
+
+
+def _select_cell(room_index, measurement_key):
+    """Resolve the cell the select value (傾斜方向 / 測定した壁・柱) lands in."""
+    start = STARTS[room_index]
+    m = _measurement(measurement_key)
+    return f"{m['select']['col']}{start + m['row_offset']}"
 
 
 # --- CORS preflight ---------------------------------------------------------
@@ -103,8 +114,13 @@ def test_post_valid_data_writes_values_into_template(client):
             "floor": "2",
             "room_name": "LDK",
             "measurements": {
-                "floor_x": {"direction": "傾斜無", "diff": "0", "distance": "2000"},
-                "floor_y": {"direction": "↑", "diff": "3", "distance": "1500"},
+                # 床: 傾斜方向は S 列へ
+                "floor_x": {"select": "←", "diff": "0", "distance": "2000"},
+                "floor_y": {"select": "↑", "diff": "3", "distance": "1500"},
+                # 壁: 測定した壁は P 列へ
+                "wall_ud": {"select": "上壁", "diff": "2", "distance": "1800"},
+                # 柱: 計測できなかった場合は ―
+                "pillar_lr": {"select": "―"},
             },
         }],
     ))
@@ -115,14 +131,16 @@ def test_post_valid_data_writes_values_into_template(client):
     # Room 0 header
     assert ws[f"{BLOCK['floor_col']}{STARTS[0]}"].value == 2
     assert ws[f"{BLOCK['room_name_col']}{STARTS[0]}"].value == "LDK"
-    # floor_x measurement: numeric strings are coerced so the AJ formula computes
-    assert ws[_measurement_cell(0, "floor_x", "direction")].value == "傾斜無"
-    assert ws[_measurement_cell(0, "floor_x", "diff")].value == 0
-    assert ws[_measurement_cell(0, "floor_x", "distance")].value == 2000
-    # floor_y measurement
-    assert ws[_measurement_cell(0, "floor_y", "direction")].value == "↑"
-    assert ws[_measurement_cell(0, "floor_y", "diff")].value == 3
-    assert ws[_measurement_cell(0, "floor_y", "distance")].value == 1500
+    # 床 floor_x: select lands in S, numeric strings are coerced so AJ computes
+    assert ws[_select_cell(0, "floor_x")].value == "←"
+    assert ws[_value_cell(0, "floor_x", "diff")].value == 0
+    assert ws[_value_cell(0, "floor_x", "distance")].value == 2000
+    assert ws[_select_cell(0, "floor_y")].value == "↑"
+    # 壁: select lands in P (not S)
+    assert ws[_select_cell(0, "wall_ud")].value == "上壁"
+    assert ws[_value_cell(0, "wall_ud", "diff")].value == 2
+    # 柱: the ― ("couldn't measure") option is written verbatim to P
+    assert ws[_select_cell(0, "pillar_lr")].value == "―"
 
 
 def test_fullwidth_numbers_are_normalized_to_numeric(client):
@@ -135,8 +153,8 @@ def test_fullwidth_numbers_are_normalized_to_numeric(client):
     ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
 
     assert ws[f"{BLOCK['floor_col']}{STARTS[0]}"].value == 2
-    assert ws[_measurement_cell(0, "floor_x", "diff")].value == -3
-    assert ws[_measurement_cell(0, "floor_x", "distance")].value == 1500
+    assert ws[_value_cell(0, "floor_x", "diff")].value == -3
+    assert ws[_value_cell(0, "floor_x", "distance")].value == 1500
 
 
 def test_non_dict_room_entries_are_skipped(client):
@@ -148,6 +166,24 @@ def test_non_dict_room_entries_are_skipped(client):
     assert resp.status_code == 200
     ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
     assert ws[f"{BLOCK['room_name_col']}{STARTS[1]}"].value == "寝室"
+
+
+def test_rooms_not_a_list_returns_400(client):
+    # A non-list ``rooms`` would crash len(); it must be rejected with a 400.
+    resp = client.post("/", json=_payload(rooms=5))
+
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "rooms must be a list"}
+
+
+def test_non_dict_measurements_are_ignored(client):
+    # ``measurements`` of the wrong type must not crash (regression guard).
+    resp = client.post("/", json=_payload(rooms=[
+        {"floor": "1", "room_name": "和室", "measurements": ["bogus"]},
+    ]))
+    assert resp.status_code == 200
+    ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
+    assert ws[f"{BLOCK['room_name_col']}{STARTS[0]}"].value == "和室"
 
 
 def test_multiple_rooms_map_to_successive_blocks(client):
@@ -195,13 +231,14 @@ def test_blank_measurement_fields_leave_cells_empty(client):
     # A room with empty measurement values writes no data to those cells.
     resp = client.post("/", json=_payload(rooms=[{
         "floor": "3", "room_name": "",
-        "measurements": {"floor_x": {"direction": "", "diff": "", "distance": ""}},
+        "measurements": {"floor_x": {"select": "", "diff": "", "distance": ""}},
     }]))
     ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
 
     assert ws[f"{BLOCK['floor_col']}{STARTS[0]}"].value == 3
     assert ws[f"{BLOCK['room_name_col']}{STARTS[0]}"].value is None
-    assert ws[_measurement_cell(0, "floor_x", "diff")].value is None
+    assert ws[_select_cell(0, "floor_x")].value is None
+    assert ws[_value_cell(0, "floor_x", "diff")].value is None
 
 
 # --- Bad / missing input ----------------------------------------------------

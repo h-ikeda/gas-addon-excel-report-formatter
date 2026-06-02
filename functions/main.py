@@ -55,20 +55,26 @@ def _clear_data_cells(ws, mapping):
 
     雛形には記入例（(例)ＬＤＫ など）が入っていることがあり、利用者が記入
     しなかった欄に例の値が残ると誤った報告書になる。そこで mapping.json が
-    記入欄として定義しているセル（物件名・階数・部屋名・各計測点の各項目）
-    だけを一度クリアしてから書き込む。印字済みのラベル・区切りの「/」・分母
-    1000・換算計測値の数式などは mapping に含まれないため、消さない。
+    記入欄として定義しているセル（物件名・階数・部屋名・各計測点の選択欄と
+    数値欄）だけを一度クリアしてから書き込む。印字済みのラベル・区切りの
+    「/」・分母 1000・換算計測値の数式などは mapping に含まれないため消さない。
     """
     block = mapping['room_block']
-    fields = block['fields']
+    value_fields = block['value_fields']
 
-    ws[mapping['property_name_cell']] = None
+    # property_name_cell を持たない将来フォーマットにも備え、定義時のみ消す。
+    prop_cell = mapping.get('property_name_cell')
+    if prop_cell:
+        ws[prop_cell] = None
     for start_row in mapping['block_start_rows']:
         ws[f"{block['floor_col']}{start_row}"] = None
         ws[f"{block['room_name_col']}{start_row}"] = None
         for m in block['measurements']:
             row = start_row + m['row_offset']
-            for col in fields.values():
+            select = m.get('select')
+            if select:
+                ws[f"{select['col']}{row}"] = None
+            for col in value_fields.values():
                 ws[f'{col}{row}'] = None
 
 
@@ -83,15 +89,23 @@ def _write_room(ws, mapping, start_row, room):
     ws[f"{block['floor_col']}{start_row}"] = _to_cell_value(room.get('floor'))
     ws[f"{block['room_name_col']}{start_row}"] = _to_cell_value(room.get('room_name'))
 
-    fields = block['fields']
-    measurements = room.get('measurements') or {}
+    value_fields = block['value_fields']
+    # measurements が辞書以外（リストや文字列など）でも落ちないようにする。
+    measurements = room.get('measurements')
+    if not isinstance(measurements, dict):
+        measurements = {}
     for m in block['measurements']:
         data = measurements.get(m['key'])
-        if not data:
+        if not isinstance(data, dict):
             continue
         row = start_row + m['row_offset']
-        # mapping.json の fields に定義された記入項目だけを書き込む。
-        for field_key, col in fields.items():
+        # 選択欄（傾斜方向／測定した壁・柱）。雛形のプルダウン候補をそのまま
+        # 書き込むため、数値化や正規化はせず文字列のまま入れる。
+        select = m.get('select')
+        if select and data.get('select') not in (None, ''):
+            ws[f"{select['col']}{row}"] = data['select']
+        # 数値欄（水平器計測値・測定値の差・距離）。
+        for field_key, col in value_fields.items():
             if field_key in data:
                 ws[f'{col}{row}'] = _to_cell_value(data.get(field_key))
 
@@ -123,7 +137,13 @@ def generate_excel(request):
             return jsonify({"error": "No template provided"}), 400, headers
 
         mapping = _load_mapping()
-        rooms = request_json.get('rooms') or []
+        # rooms は未指定なら空リスト。リスト以外が来たら 400 で弾く（len() で
+        # TypeError → 500 になるのを防ぐ）。
+        rooms = request_json.get('rooms')
+        if rooms is None:
+            rooms = []
+        elif not isinstance(rooms, list):
+            return jsonify({"error": "rooms must be a list"}), 400, headers
         block_start_rows = mapping['block_start_rows']
         if len(rooms) > len(block_start_rows):
             return jsonify({
@@ -139,10 +159,11 @@ def generate_excel(request):
         # 雛形の記入例・前回値が残らないよう、記入欄を一度クリアする。
         _clear_data_cells(ws, mapping)
 
-        # 物件名（共通項目）
-        if 'property_name' in request_json:
-            ws[mapping['property_name_cell']] = _to_cell_value(
-                request_json.get('property_name'))
+        # 物件名（共通項目）。property_name_cell を持たない将来フォーマットでも
+        # mapping から該当キーを省くだけで対応できるよう、定義時のみ書き込む。
+        prop_cell = mapping.get('property_name_cell')
+        if prop_cell and 'property_name' in request_json:
+            ws[prop_cell] = _to_cell_value(request_json.get('property_name'))
 
         # 各部屋のデータを、対応するブロックへ順に書き込む。
         for i, room in enumerate(rooms):

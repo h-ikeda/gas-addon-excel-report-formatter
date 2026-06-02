@@ -83,7 +83,7 @@ describe('createReport', () => {
       {
         floor: '2',
         room_name: 'LDK',
-        measurements: { floor_x: { direction: '傾斜無', diff: '0', distance: '2000' } },
+        measurements: { floor_x: { select: '←', diff: '0', distance: '2000' } },
       },
     ],
   };
