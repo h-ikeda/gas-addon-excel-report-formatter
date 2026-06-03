@@ -50,6 +50,20 @@ def _to_cell_value(value):
         return text
 
 
+def _write_cell(ws, cell_ref, value):
+    """シート保護ルールに従いセルへ書き込む。
+
+    シート保護が有効かつセルが明示的にアンロック（locked=False）されていない場合は
+    書き込みをスキップする。Excel のデフォルトではすべてのセルがロック状態のため、
+    保護シートで編集可能にするには対象セルを事前に locked=False に設定しておく。
+    シート保護が無効なテンプレートでは常に書き込む（既存の動作を維持）。
+    """
+    cell = ws[cell_ref]
+    if ws.protection.sheet and cell.protection.locked is not False:
+        return
+    cell.value = value
+
+
 def _clear_data_cells(ws, mapping):
     """全ブロックの「記入欄」を空にする。
 
@@ -58,6 +72,7 @@ def _clear_data_cells(ws, mapping):
     記入欄として定義しているセル（物件名・階数・部屋名・各計測点の選択欄と
     数値欄）だけを一度クリアしてから書き込む。印字済みのラベル・区切りの
     「/」・分母 1000・換算計測値の数式などは mapping に含まれないため消さない。
+    シート保護が有効なセルはスキップする（_write_cell 参照）。
     """
     block = mapping['room_block']
     value_fields = block['value_fields']
@@ -65,17 +80,17 @@ def _clear_data_cells(ws, mapping):
     # property_name_cell を持たない将来フォーマットにも備え、定義時のみ消す。
     prop_cell = mapping.get('property_name_cell')
     if prop_cell:
-        ws[prop_cell] = None
+        _write_cell(ws, prop_cell, None)
     for start_row in mapping['block_start_rows']:
-        ws[f"{block['floor_col']}{start_row}"] = None
-        ws[f"{block['room_name_col']}{start_row}"] = None
+        _write_cell(ws, f"{block['floor_col']}{start_row}", None)
+        _write_cell(ws, f"{block['room_name_col']}{start_row}", None)
         for m in block['measurements']:
             row = start_row + m['row_offset']
             select = m.get('select')
             if select:
-                ws[f"{select['col']}{row}"] = None
+                _write_cell(ws, f"{select['col']}{row}", None)
             for col in value_fields.values():
-                ws[f'{col}{row}'] = None
+                _write_cell(ws, f'{col}{row}', None)
 
 
 def _write_room(ws, mapping, start_row, room):
@@ -86,8 +101,8 @@ def _write_room(ws, mapping, start_row, room):
 
     block = mapping['room_block']
 
-    ws[f"{block['floor_col']}{start_row}"] = _to_cell_value(room.get('floor'))
-    ws[f"{block['room_name_col']}{start_row}"] = _to_cell_value(room.get('room_name'))
+    _write_cell(ws, f"{block['floor_col']}{start_row}", _to_cell_value(room.get('floor')))
+    _write_cell(ws, f"{block['room_name_col']}{start_row}", _to_cell_value(room.get('room_name')))
 
     value_fields = block['value_fields']
     # measurements が辞書以外（リストや文字列など）でも落ちないようにする。
@@ -103,11 +118,11 @@ def _write_room(ws, mapping, start_row, room):
         # 書き込むため、数値化や正規化はせず文字列のまま入れる。
         select = m.get('select')
         if select and data.get('select') not in (None, ''):
-            ws[f"{select['col']}{row}"] = data['select']
+            _write_cell(ws, f"{select['col']}{row}", data['select'])
         # 数値欄（水平器計測値・測定値の差・距離）。
         for field_key, col in value_fields.items():
             if field_key in data:
-                ws[f'{col}{row}'] = _to_cell_value(data.get(field_key))
+                _write_cell(ws, f'{col}{row}', _to_cell_value(data.get(field_key)))
 
 
 @functions_framework.http
@@ -163,7 +178,7 @@ def generate_excel(request):
         # mapping から該当キーを省くだけで対応できるよう、定義時のみ書き込む。
         prop_cell = mapping.get('property_name_cell')
         if prop_cell and 'property_name' in request_json:
-            ws[prop_cell] = _to_cell_value(request_json.get('property_name'))
+            _write_cell(ws, prop_cell, _to_cell_value(request_json.get('property_name')))
 
         # 各部屋のデータを、対応するブロックへ順に書き込む。
         for i, room in enumerate(rooms):

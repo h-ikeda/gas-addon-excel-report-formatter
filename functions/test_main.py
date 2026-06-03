@@ -21,6 +21,7 @@ import os
 import pytest
 from functions_framework import create_app
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Protection
 
 
 SOURCE = os.path.join(os.path.dirname(__file__), "main.py")
@@ -239,6 +240,92 @@ def test_blank_measurement_fields_leave_cells_empty(client):
     assert ws[f"{BLOCK['room_name_col']}{STARTS[0]}"].value is None
     assert ws[_select_cell(0, "floor_x")].value is None
     assert ws[_value_cell(0, "floor_x", "diff")].value is None
+
+
+# --- Sheet protection -------------------------------------------------------
+
+def _make_protected_template_b64():
+    """シート保護が有効で、最初のブロック以外のセルをアンロックしたテンプレートを作成する。
+
+    最初のブロック（入力例）はロックされたまま、2ブロック目以降のセルと
+    property_name_cell を locked=False にして記入可能とする。
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = SHEET
+    ws.protection.sheet = True
+
+    ws[MAPPING["property_name_cell"]].protection = Protection(locked=False)
+
+    for start_row in STARTS[1:]:
+        ws[f"{BLOCK['floor_col']}{start_row}"].protection = Protection(locked=False)
+        ws[f"{BLOCK['room_name_col']}{start_row}"].protection = Protection(locked=False)
+        for m in BLOCK["measurements"]:
+            row = start_row + m["row_offset"]
+            if "select" in m:
+                ws[f"{m['select']['col']}{row}"].protection = Protection(locked=False)
+            for col in BLOCK["value_fields"].values():
+                ws[f"{col}{row}"].protection = Protection(locked=False)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def test_locked_cells_in_protected_sheet_are_not_written(client):
+    # シート保護が有効でロックされたセルへは書き込まない（入力例ブロックを保護）。
+    resp = client.post("/", json={
+        "template": _make_protected_template_b64(),
+        "rooms": [{"floor": "2", "room_name": "LDK", "measurements": {}}],
+    })
+    assert resp.status_code == 200
+    ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
+    assert ws[f"{BLOCK['floor_col']}{STARTS[0]}"].value is None
+    assert ws[f"{BLOCK['room_name_col']}{STARTS[0]}"].value is None
+
+
+def test_unlocked_cells_in_protected_sheet_are_written(client):
+    # シート保護が有効でも locked=False のセルには通常通り書き込む。
+    resp = client.post("/", json={
+        "template": _make_protected_template_b64(),
+        "property_name": "テスト物件",
+        "rooms": [
+            None,  # 最初のブロックはロック済みのためスキップ
+            {"floor": "3", "room_name": "寝室", "measurements": {
+                "floor_x": {"select": "←", "diff": "2", "distance": "1500"},
+            }},
+        ],
+    })
+    assert resp.status_code == 200
+    ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
+    assert ws[MAPPING["property_name_cell"]].value == "テスト物件"
+    assert ws[f"{BLOCK['floor_col']}{STARTS[1]}"].value == 3
+    assert ws[f"{BLOCK['room_name_col']}{STARTS[1]}"].value == "寝室"
+    assert ws[_select_cell(1, "floor_x")].value == "←"
+    assert ws[_value_cell(1, "floor_x", "diff")].value == 2
+
+
+def test_locked_cells_in_protected_sheet_preserve_existing_content(client):
+    # シート保護が有効でロックされたセルはクリアフェーズでも既存値を保持する。
+    wb = Workbook()
+    ws = wb.active
+    ws.title = SHEET
+    ws.protection.sheet = True
+    ws[f"{BLOCK['floor_col']}{STARTS[0]}"].value = "（例）"  # 入力例の既存値
+    ws[MAPPING["property_name_cell"]].protection = Protection(locked=False)
+    buf = io.BytesIO()
+    wb.save(buf)
+    template_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    resp = client.post("/", json={
+        "template": template_b64,
+        "property_name": "サンプル物件",
+        "rooms": [],
+    })
+    assert resp.status_code == 200
+    ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
+    assert ws[f"{BLOCK['floor_col']}{STARTS[0]}"].value == "（例）"
+    assert ws[MAPPING["property_name_cell"]].value == "サンプル物件"
 
 
 # --- Bad / missing input ----------------------------------------------------
