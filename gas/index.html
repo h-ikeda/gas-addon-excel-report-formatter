@@ -301,11 +301,17 @@
         if (e.target.closest('.room-head')) return;
         const roomEl = e.target.closest('.room');
         if (!roomEl) return;
-        const roomHead = roomEl.querySelector('.room-head');
         setTimeout(function() {
+          const roomHead = roomEl.querySelector('.room-head');
+          if (!roomHead || !document.body.contains(roomHead)) return;
           const rect = roomHead.getBoundingClientRect();
           if (rect.top < 0) {
-            window.scrollBy({ top: rect.top, behavior: 'instant' });
+            const inputRect = e.target.getBoundingClientRect();
+            const maxScrollUp = inputRect.bottom - window.innerHeight + 16;
+            const scrollAmount = Math.min(0, Math.max(rect.top, maxScrollUp));
+            if (scrollAmount < 0) {
+              window.scrollBy({ top: scrollAmount, behavior: 'auto' });
+            }
           }
         }, 350);
       });
