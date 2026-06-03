@@ -305,6 +305,49 @@ def test_unlocked_cells_in_protected_sheet_are_written(client):
     assert ws[_value_cell(1, "floor_x", "diff")].value == 2
 
 
+def test_first_room_lands_in_a_writable_block(client):
+    # 回帰テスト: 実雛形（IP_230901_11.xlsx）では入力例ブロックは block_start_rows
+    # の外にあり、全ブロックが書き込み可能。block_start_rows[0] がロックされた
+    # 入力例を指していると 1 部屋目が黙って失われる（保護セルへの書き込みは
+    # スキップされるため）。block_start_rows の全ブロックが書き込めることを保証する。
+    wb = Workbook()
+    ws = wb.active
+    ws.title = SHEET
+    ws.protection.sheet = True
+    # 物件名と全データブロックをアンロック（実雛形の状態を再現）。
+    ws[MAPPING["property_name_cell"]].protection = Protection(locked=False)
+    for start_row in STARTS:
+        ws[f"{BLOCK['floor_col']}{start_row}"].protection = Protection(locked=False)
+        ws[f"{BLOCK['room_name_col']}{start_row}"].protection = Protection(locked=False)
+        for m in BLOCK["measurements"]:
+            row = start_row + m["row_offset"]
+            if "select" in m:
+                ws[f"{m['select']['col']}{row}"].protection = Protection(locked=False)
+            for col in BLOCK["value_fields"].values():
+                ws[f"{col}{row}"].protection = Protection(locked=False)
+    buf = io.BytesIO()
+    wb.save(buf)
+    template_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    resp = client.post("/", json={
+        "template": template_b64,
+        "rooms": [
+            {"floor": "1", "room_name": "和室", "measurements": {
+                "floor_x": {"select": "←", "diff": "3", "distance": "1500"},
+            }},
+            {"floor": "2", "room_name": "洋室1", "measurements": {}},
+        ],
+    })
+    assert resp.status_code == 200
+    ws = _decode_workbook(resp.get_json()["fileData"])[SHEET]
+    # 1 部屋目（和室）が先頭ブロックに保存されていること。
+    assert ws[f"{BLOCK['room_name_col']}{STARTS[0]}"].value == "和室"
+    assert ws[_select_cell(0, "floor_x")].value == "←"
+    assert ws[_value_cell(0, "floor_x", "diff")].value == 3
+    # 2 部屋目（洋室1）は次のブロックへ。
+    assert ws[f"{BLOCK['room_name_col']}{STARTS[1]}"].value == "洋室1"
+
+
 def test_locked_cells_in_protected_sheet_preserve_existing_content(client):
     # シート保護が有効でロックされたセルはクリアフェーズでも既存値を保持する。
     wb = Workbook()
