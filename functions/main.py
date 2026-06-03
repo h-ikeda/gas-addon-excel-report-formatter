@@ -58,9 +58,10 @@ def _write_cell(ws, cell_ref, value):
     保護シートで編集可能にするには対象セルを事前に locked=False に設定しておく。
     シート保護が無効なテンプレートでは常に書き込む（既存の動作を維持）。
     """
-    if ws.protection.sheet and ws[cell_ref].protection.locked is not False:
+    cell = ws[cell_ref]
+    if ws.protection.sheet and cell.protection.locked is not False:
         return
-    ws[cell_ref] = value
+    cell.value = value
 
 
 def _clear_data_cells(ws, mapping):
