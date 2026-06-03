@@ -42,7 +42,7 @@
     .measure-table td.point-cell { font-size: 0.78em; font-weight: bold; color: #333; background: #fafbff; text-align: left; padding-left: 6px; white-space: nowrap; }
     .measure-table tr.group-row td { background: #ececf5; color: #555; font-size: 0.74em; font-weight: bold; text-align: left; padding: 3px 6px; }
     /* iOS Safari はフォントサイズ 16px 未満の入力欄でフォーカス時にズームする。1rem で固定して防ぐ。 */
-    .measure-table select, .measure-table input { width: 100%; padding: 5px 2px; margin-top: 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 1rem; text-align: center; }
+    .measure-table select, .measure-table input { width: 100%; padding: 5px 2px; margin-top: 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 1rem; text-align: center; scroll-margin-top: 72px; }
     .add-room { background-color: #34a853; }
     .hint { font-size: 0.78em; color: #777; margin-top: 4px; }
   </style>
@@ -291,6 +291,23 @@
           const levelInput = e.target.closest('tr').querySelector('input[data-field="digital_level"]');
           if (levelInput) levelInput.focus();
         }
+      });
+
+      // キーボード出現時に sticky の room-head が上に抜ける問題への対処。
+      // ブラウザの自動スクロールが .room の containing block をビューポート外に押し出すと
+      // sticky が解除されて room-head が上に消える。フォーカス後に位置を確認し補正する。
+      document.getElementById('rooms').addEventListener('focusin', function(e) {
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') return;
+        if (e.target.closest('.room-head')) return;
+        const roomEl = e.target.closest('.room');
+        if (!roomEl) return;
+        const roomHead = roomEl.querySelector('.room-head');
+        setTimeout(function() {
+          const rect = roomHead.getBoundingClientRect();
+          if (rect.top < 0) {
+            window.scrollBy({ top: rect.top, behavior: 'instant' });
+          }
+        }, 350);
       });
     });
 
