@@ -96,6 +96,17 @@
       ]}
     ];
 
+    // 出力前の簡易バリデーション設定。バックエンドの mapping.json の validation と一致させること。
+    //   slopeWarningThreshold: 傾斜の警告しきい値（1000分率）。水平器計測値、または
+    //     1000*差/距離 の絶対値がこの値以上だと再検査になりうるため確認を促す。
+    //   noValueOptions: 選択しても計測値の入力が不要な選択肢（傾斜無・―）。
+    //   requireSelectKeys: 必ず選択させる計測点の key（柱は必ず選択する）。
+    const VALIDATION = {
+      slopeWarningThreshold: 6,
+      noValueOptions: ['傾斜無', '―'],
+      requireSelectKeys: ['pillar_ud', 'pillar_lr']
+    };
+
     let roomSeq = 0;
 
     // 起動時に現在の雛形設定を取得して表示し、未設定なら出力ボタンを止める。
@@ -142,8 +153,19 @@
         '</tr>';
     }
 
+    // 新しい部屋の階数の初期値は「直前に入力していた階数」を引き継ぐ。
+    // 最初の部屋（既存の部屋が無い）のときは 1 階を既定とする。
+    function nextDefaultFloor() {
+      const rooms = document.querySelectorAll('#rooms .room');
+      if (rooms.length === 0) return '1';
+      const last = rooms[rooms.length - 1].querySelector('[data-room-field="floor"]');
+      const value = last ? last.value.trim() : '';
+      return value !== '' ? value : '1';
+    }
+
     function addRoom() {
       const id = 'room' + (roomSeq++);
+      const defaultFloor = nextDefaultFloor();
       const wrap = document.createElement('div');
       wrap.className = 'room';
       wrap.id = id;
@@ -162,7 +184,7 @@
             '<button type="button" class="remove" onclick="removeRoom(\'' + id + '\')">削除</button>' +
           '</div>' +
           '<div class="room-meta">' +
-            '<label>階数</label><input type="number" inputmode="numeric" data-room-field="floor">' +
+            '<label>階数</label><input type="number" inputmode="numeric" data-room-field="floor" value="' + defaultFloor + '">' +
             '<label>部屋名</label><input type="text" data-room-field="room_name" placeholder="例: LDK">' +
           '</div>' +
         '</div>' +
@@ -214,6 +236,66 @@
         property_name: document.getElementById('property_name').value,
         rooms: rooms
       };
+    }
+
+    // モバイル IME の全角数字・記号（－ ． など）も数値として解釈する。
+    // バックエンドの NFKC 正規化と挙動を揃える。
+    function toNumber(value) {
+      if (value === undefined || value === null) return NaN;
+      let text = String(value).trim();
+      if (text === '') return NaN;
+      if (text.normalize) text = text.normalize('NFKC');
+      return parseFloat(text);
+    }
+
+    // 出力前の簡易バリデーション。入力ミスの可能性を「警告」として集める
+    // （ブロックはせず、利用者の確認後にそのまま出力できる）。ルールは
+    // VALIDATION（= mapping.json の validation）に従う。
+    function collectWarnings(formData) {
+      const warnings = [];
+      formData.rooms.forEach(function(room, i) {
+        const label = '部屋 ' + (i + 1);
+        const measurements = room.measurements || {};
+        MEASUREMENT_GROUPS.forEach(function(g) {
+          g.points.forEach(function(p) {
+            const data = measurements[p.key] || {};
+            const select = data.select;
+            const where = label + ' の「' + g.group + ' ' + p.label + '」';
+
+            // 柱など、必ず選択させたい計測点が未選択。
+            if (VALIDATION.requireSelectKeys.indexOf(p.key) !== -1 &&
+                (select === undefined || String(select).trim() === '')) {
+              warnings.push(where + 'が未選択です。必ず選択してください。');
+              return;
+            }
+
+            // 「傾斜無」「―」以外を選択しているのに数値が未入力 / 傾斜が大きい場合を確認。
+            if (select && VALIDATION.noValueOptions.indexOf(select) === -1) {
+              const level = toNumber(data.digital_level);
+              const diff = toNumber(data.diff);
+              const distance = toNumber(data.distance);
+              const hasLevel = !isNaN(level);
+              const hasRatio = !isNaN(diff) && !isNaN(distance) && distance !== 0;
+
+              if (!hasLevel && !hasRatio) {
+                warnings.push(where + 'で向きを選択していますが、計測値が未入力です。');
+                return;
+              }
+
+              // 傾斜（1000分率）＝ 水平器計測値 または 1000*差/距離。
+              let slope = 0;
+              if (hasLevel) slope = Math.max(slope, Math.abs(level));
+              if (hasRatio) slope = Math.max(slope, Math.abs(1000 * diff / distance));
+              if (slope >= VALIDATION.slopeWarningThreshold) {
+                const shown = Math.round(slope * 10) / 10;
+                warnings.push(where + 'の傾斜が約 ' + shown + '/1000 です（' +
+                  VALIDATION.slopeWarningThreshold + '/1000 以上だと再検査）。入力ミスがないか確認してください。');
+              }
+            }
+          });
+        });
+      });
+      return warnings;
     }
 
     // Google Picker を開いて Drive 上の雛形ファイルを選ばせる。
@@ -339,6 +421,21 @@
         const r = formData.rooms[i];
         if (!r.floor.trim() || !r.room_name.trim()) {
           return abort('部屋 ' + (i + 1) + ' の階数と部屋名を入力してください。');
+        }
+      }
+
+      // 入力ミスの可能性を確認する簡易バリデーション（出力はブロックしない）。
+      const warnings = collectWarnings(formData);
+      if (warnings.length > 0) {
+        const proceed = window.confirm(
+          '以下の点をご確認ください:\n\n・' + warnings.join('\n・') +
+          '\n\nこのまま出力してよろしいですか？'
+        );
+        if (!proceed) {
+          // 確認をキャンセル。エラー表示はせずボタンだけ戻す。
+          btn.disabled = false;
+          btn.innerText = 'Excel出力';
+          return;
         }
       }
 
