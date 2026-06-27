@@ -184,7 +184,7 @@
             '<button type="button" class="remove" onclick="removeRoom(\'' + id + '\')">削除</button>' +
           '</div>' +
           '<div class="room-meta">' +
-            '<label>階数</label><input type="number" inputmode="numeric" data-room-field="floor" value="' + defaultFloor + '">' +
+            '<label>階数</label><input type="number" inputmode="numeric" data-room-field="floor">' +
             '<label>部屋名</label><input type="text" data-room-field="room_name" placeholder="例: LDK">' +
           '</div>' +
         '</div>' +
@@ -197,6 +197,9 @@
         '</table>';
 
       document.getElementById('rooms').appendChild(wrap);
+      // 階数の初期値は innerHTML に埋め込まず、DOM 生成後に value プロパティで設定する
+      // （直前の部屋の入力値を HTML 文字列へ連結すると DOM ベースの XSS 経路になるため）。
+      wrap.querySelector('[data-room-field="floor"]').value = defaultFloor;
       renumberRooms();
     }
 
