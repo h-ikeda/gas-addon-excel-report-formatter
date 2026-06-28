@@ -35,6 +35,19 @@
     "  列がずれた場合は floor_col / room_name_col / value_fields / 各 select.col を直す。",
     "  選択肢が変わった場合は該当 measurement の select.options を直す（雛形のプルダウンと一致させる）。",
     "",
+    "■ 出力前の簡易バリデーション（validation）",
+    "  Excel 出力ボタンを押したときに、フロントエンド（gas/index.html）が出力前に行う",
+    "  確認用のルールをここに集約している。これは入力をブロックする厳格チェックではなく、",
+    "  入力ミスを利用者に確認させるための『警告』で、確認後はそのまま出力できる。",
+    "  この組み合わせ（しきい値・例外の選択肢・必須の選択欄）は運用で変わりうるため、",
+    "  ソースに直書きせずマッピングとして外出しする。フロントエンドの VALIDATION 定数と",
+    "  値を一致させること（measurements と同様、両方を更新する）。",
+    "    - slope_warning_threshold: 傾斜の警告しきい値（1000 分率）。水平器計測値、または",
+    "        1000*差/距離 の絶対値がこの値以上だと再検査になりうるため確認を促す（既定 6）。",
+    "    - no_value_select_options: 選択しても計測値の入力が不要な選択肢（『傾斜無』『―』）。",
+    "        これら以外を選択しているのに数値が未入力なら確認を促す。",
+    "    - require_select_keys: 必ず選択させる計測点の key（柱は必ず選択するため未選択を確認）。",
+    "",
     "■ シート保護されたセルへの書き込み制御（重要）",
     "  シート保護が有効（ws.protection.sheet = True）な雛形では、明示的にアンロック",
     "  （locked=False）されていないセルへの書き込みおよびクリアをスキップする。",
@@ -72,6 +85,12 @@
       { "key": "pillar_lr", "group": "柱", "label": "左右", "row_offset": 12,
         "select": { "col": "P", "label": "測定した柱", "options": ["右柱", "左柱", "―"] } }
     ]
+  },
+
+  "validation": {
+    "slope_warning_threshold": 6,
+    "no_value_select_options": ["傾斜無", "―"],
+    "require_select_keys": ["pillar_ud", "pillar_lr"]
   },
 
   "block_start_rows": [29, 43, 57, 71, 94, 108, 122, 136, 150]
