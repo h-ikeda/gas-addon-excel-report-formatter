@@ -26,7 +26,19 @@ jobs:
       - name: Push to GAS
         run: |
           cd gas
-          clasp push -f
+          # Node のセキュリティリリース (v22.23.0 / CVE-2026-48931 の http.Agent 修正) が
+          # 持ち込んだ keep-alive のリグレッションにより、clasp が使う gaxios/node-fetch が
+          # script.googleapis.com への push で "Premature close" を間欠的に起こす
+          # (nodejs/node#63989, 修正 PR #64004)。間欠失敗のためリトライで吸収する。
+          for attempt in 1 2 3; do
+            if clasp push -f; then
+              exit 0
+            fi
+            echo "clasp push failed (attempt $attempt). Retrying..."
+            sleep $((attempt * 5))
+          done
+          echo "clasp push failed after 3 attempts"
+          exit 1
       - name: Deploy to GAS
         run: |
           cd gas
